@@ -8,6 +8,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const CARS = require('../public/cars.js');
+const T0 = Date.now();                                    // 자동차 시계의 기준 시각
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -16,11 +18,12 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const CFG = {
   maxPlayersPerRoom: parseInt(process.env.MAX_PLAYERS, 10) || 40, // 방 하나 최대 인원 (무료 서버는 작게)
   tickHz: 10,                 // 서버가 상태를 뿌리는 횟수/초
-  maxSpeed: 11,               // m/s — 달리기(약 9)보다 약간 여유
+  maxSpeed: 15,               // m/s — 달리기(약 10.5)보다 여유
   worldRadius: 60,            // 광장 반경(m). 여기 밖으로는 못 나감
   maxMsgPerSec: 40,           // 접속자 1명이 보낼 수 있는 메시지 수/초
   maxMsgBytes: 512,           // 메시지 최대 크기
   nameMax: 12,
+  boardRange: 12,             // 자동차에 탈 수 있는 거리(m)
   idleKickMs: 5 * 60 * 1000,  // 5분 동안 아무 입력도 없으면 연결 종료
 };
 
@@ -75,7 +78,8 @@ function broadcast(room, obj, exceptId) {
   const msg = JSON.stringify(obj);
   for (const p of room.players.values()) if (p.id !== exceptId && p.ws.readyState === 1) p.ws.send(msg);
 }
-const pub = p => ({ id: p.id, name: p.name, hue: p.hue, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv });
+const pub = p => ({ id: p.id, name: p.name, hue: p.hue, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
+const carT = () => (Date.now() - T0) / 1000;
 function round2(v) { return Math.round(v * 100) / 100; }
 
 /* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
@@ -114,10 +118,10 @@ wss.on('connection', (ws, req) => {
       if (room.players.size >= CFG.maxPlayersPerRoom) { send(ws, { t: 'full' }); return ws.close(); }
       const sp = spawnPoint(room);
       me = { id: nextId++, ws, name: cleanName(m.name), hue: Math.floor(num(m.hue, Math.random() * 360)) % 360,
-             x: sp.x, z: sp.z, ry: 0, mv: 0, lastT: now, lastInput: now };
+             x: sp.x, z: sp.z, y: 0, st: 0, ride: null, ry: 0, mv: 0, lastT: now, lastInput: now };
       room.players.set(me.id, me);
       send(ws, { t: 'welcome', id: me.id, you: pub(me), players: [...room.players.values()].filter(p => p !== me).map(pub),
-                 cfg: { tickHz: CFG.tickHz, worldRadius: CFG.worldRadius, maxSpeed: CFG.maxSpeed } });
+                 cfg: { tickHz: CFG.tickHz, worldRadius: CFG.worldRadius, maxSpeed: CFG.maxSpeed }, now: Date.now(), t0: T0 });
       broadcast(room, { t: 'join', p: pub(me) }, me.id);
       return;
     }
@@ -126,6 +130,8 @@ wss.on('connection', (ws, req) => {
     if (m.t === 'move') {
       /* 클라이언트가 말한 위치를 그대로 믿지 않고, 시간당 이동 가능 거리 안으로만 인정 */
       const dt = clamp((now - me.lastT) / 1000, 0.01, 0.5); me.lastT = now; me.lastInput = now;
+      if (me.ride) return;                                  // 자동차를 타고 있으면 위치는 서버가 정해요
+      me.y = clamp(num(m.y, 0), 0, 9); me.st = (m.st === 1 || m.st === 2 || m.st === 3) ? m.st : 0;
       let tx = num(m.x, me.x), tz = num(m.z, me.z);
       let dx = tx - me.x, dz = tz - me.z;
       const dist = Math.hypot(dx, dz), maxD = CFG.maxSpeed * dt;
@@ -138,7 +144,41 @@ wss.on('connection', (ws, req) => {
       if (dist > maxD * 1.5 + 0.5) send(ws, { t: 'fix', x: round2(me.x), z: round2(me.z) });   // 너무 크게 어긋나면 바로잡아 줌
       return;
     }
-    if (m.t === 'ping') { me.lastInput = now; send(ws, { t: 'pong', c: num(m.c, 0) }); return; }
+    if (m.t === 'ride') {                                   // 자동차 타기 요청
+      me.lastInput = now;
+      const i = Math.floor(num(m.car, -1));
+      if (me.ride || i < 0 || i >= CARS.N) return;
+      const cp = CARS.pos(i, carT());
+      if (Math.hypot(cp[0] - me.x, cp[1] - me.z) > CFG.boardRange) return send(ws, { t: 'ride', ok: false, why: 'far' });
+      const used = [...room.players.values()].filter(p => p.ride && p.ride.car === i).map(p => p.ride.seat);
+      const seat = [0, 1].find(s => !used.includes(s));
+      if (seat === undefined) return send(ws, { t: 'ride', ok: false, why: 'full' });
+      me.ride = { car: i, seat }; me.st = 4; me.y = CARS.SEAT_Y;
+      return send(ws, { t: 'ride', ok: true, car: i, seat });
+    }
+    if (m.t === 'unride') {                                 // 내리기: 광장 가장자리로
+      me.lastInput = now;
+      if (!me.ride) return;
+      const cp = CARS.pos(me.ride.car, carT()), r = Math.hypot(cp[0], cp[1]) || 1;
+      me.x = cp[0] / r * 58; me.z = cp[1] / r * 58; me.y = 0; me.st = 0; me.ride = null; me.lastT = now;
+      return send(ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
+    }
+    if (m.t === 'chat') {                                   // 말풍선 채팅
+      me.lastInput = now;
+      if (now - (me.lastChat || 0) < 1100) return;
+      let txt = Array.from(String(m.x == null ? '' : m.x).replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim()).slice(0, 60).join('');
+      if (!txt) return;
+      me.lastChat = now;
+      return broadcast(room, { t: 'chat', id: me.id, x: txt });
+    }
+    if (m.t === 'emote') {                                  // 이모티콘
+      me.lastInput = now;
+      const e = Math.floor(num(m.e, -1));
+      if (e < 0 || e > 7 || now - (me.lastEmote || 0) < 700) return;
+      me.lastEmote = now;
+      return broadcast(room, { t: 'emote', id: me.id, e });
+    }
+    if (m.t === 'ping') { me.lastInput = now; send(ws, { t: 'pong', c: num(m.c, 0), s: Date.now() }); return; }
   });
 
   ws.on('close', () => {
@@ -151,7 +191,9 @@ wss.on('connection', (ws, req) => {
 setInterval(() => {
   for (const room of rooms.values()) {
     if (!room.players.size) continue;
-    const list = [...room.players.values()].map(p => [p.id, round2(p.x), round2(p.z), round2(p.ry), p.mv]);
+    const ct = carT();
+    for (const p of room.players.values()) if (p.ride) { const s = CARS.seat(p.ride.car, ct, p.ride.seat); p.x = s[0]; p.z = s[1]; p.ry = s[2]; p.y = CARS.SEAT_Y; p.st = 4; p.mv = 0; }
+    const list = [...room.players.values()].map(p => [p.id, round2(p.x), round2(p.z), round2(p.ry), p.mv, round2(p.y || 0), p.st || 0]);
     const msg = JSON.stringify({ t: 's', p: list });
     for (const p of room.players.values()) if (p.ws.readyState === 1) p.ws.send(msg);
   }
