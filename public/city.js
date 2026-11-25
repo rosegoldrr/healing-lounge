@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────
-   Office Worker City — 퇴근길 광장 배경 (2단계)
+   Healing Lounge — 힐링 광장 배경
    고층 빌딩 · 광장 · 분수 · 카페 · 편의점 · 벤치 · 가로등 · 노을 하늘
    buildCity(THREE, scene, renderer) → { update, resolve, camBlocked, benches, ... }
    ───────────────────────────────────────────────────────────── */
@@ -12,7 +12,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   const rnd = mulberry32(20261125);
   const R = (a, b) => a + (b - a) * rnd();
   const TAU = Math.PI * 2, D2R = Math.PI / 180;
-  const city = { colliders: [], boxes: [], benches: [], trees: [], spots: {}, world: 60 };
+  const city = { colliders: [], boxes: [], benches: [], trees: [], spots: {}, world: 60, cx: 0, cz: 0 };
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const tmp = new THREE.Object3D();
   const FOG = '#efe0c8';
@@ -372,22 +372,11 @@ function buildCity(THREE, scene, renderer, OPT) {
   skyline(112, 130, 30, [20, 32], [70, 150], false);
   skyline(158, 205, 32, [26, 40], [110, 230], false);
   skyline(235, 300, 30, [34, 52], [150, 300], false);
-  // 전광판 건물 두 곳
-  const billTex = ctex(512, 256, (g, w, h) => {
-    const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#3a2f7a'); gr.addColorStop(0.6, '#c2557f'); gr.addColorStop(1, '#ffae6a'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 40; i++) { g.fillStyle = 'rgba(255,255,255,' + R(0.04, 0.12) + ')'; g.beginPath(); g.arc(R(0, w), R(0, h), R(8, 40), 0, TAU); g.fill(); }
-    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = '700 54px "Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; g.fillText('오늘도 수고했어요', w / 2, 98);
-    g.font = '600 30px "Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'; g.fillStyle = '#ffe9c4'; g.fillText('OFFICE WORKER CITY · 퇴근길 광장', w / 2, 168);
-    g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 6; g.strokeRect(10, 10, w - 20, h - 20);
-  });
+  // 건물 두 곳(전광판 없음)
   BILL.forEach((deg, i) => {
     const w = 26, d = 15, h = 48, rc = 86 + d / 2; const [cx, cz] = P(deg, rc); const ry = faceCenter(cx, cz);
     addBox(cx, cz, w, d, 0, h, ry, jit('#8d94b4'), 500 + i, 1.0, 3);
     addBox(cx, cz, w * 0.3, d * 0.3, h, h + 2.4, ry, [0.5, 0.48, 0.55], 0, 0, -1);
-    const f = frame(cx, cz, ry); const [px, pz] = f.w(0, d / 2 + 0.2);
-    const bm = mesh(new THREE.PlaneGeometry(18, 9), new THREE.MeshBasicMaterial({ map: billTex, fog: true }), px, 24, pz, ry);
-    glow(px, 24, pz);
   });
   const bGeo = new THREE.BufferGeometry();
   bGeo.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); bGeo.setAttribute('normal', new THREE.Float32BufferAttribute(bn, 3));
@@ -583,7 +572,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   for (let k = 0; k < 12; k++) { const deg = 15 + k * 30; if (avDist(deg) < 9 || nearSpot(deg, 16)) continue; const [x, z] = P(deg, 46); lamp(x, z, true); }
   for (let k = 0; k < 30; k++) { const deg = k * 12 + 6; if (avDist(deg) < 8) continue; const [x, z] = P(deg, 79.5); lamp(x, z, false); }
 
-  /* ═════════ 카페 "카페 퇴근길" ═════════ */
+  /* ═════════ 카페 "카페 포근" ═════════ */
   {
     const [fx, fz] = P(SPOT.cafe, 44.5), ry = faceCenter(fx, fz), f = frame(fx, fz, ry), BW = 18, BD = 9, BH = 7.4;
     const facade = ctex(1024, 428, (g, w, h) => {
@@ -620,7 +609,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     const stripe = ctex(256, 32, (g, w, h) => { for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#f6ebd6' : '#d96b4f'; g.fillRect(i * w / 12, 0, w / 12 + 1, h); } });
     const awn = toonMat({ map: stripe });
     pbox(f, BW - 1.2, 0.12, 2.5, awn, 0, 4.15, 1.15, 0.26); pbox(f, BW - 1.2, 0.42, 0.08, awn, 0, 3.55, 2.33);
-    const sign = textBoard(512, 100, '#2f4a45', '#f3d58a', '카페 퇴근길 · CAFÉ', 54, (g, W, H) => { g.strokeStyle = '#f3d58a'; g.lineWidth = 4; g.strokeRect(8, 8, W - 16, H - 16); });
+    const sign = textBoard(512, 100, '#2f4a45', '#f3d58a', '카페 포근 · CAFÉ', 54, (g, W, H) => { g.strokeStyle = '#f3d58a'; g.lineWidth = 4; g.strokeRect(8, 8, W - 16, H - 16); });
     pbox(f, 9.2, 1.7, 0.3, M('#26382f'), 0, 6.55, 0.2); pplane(f, 8.8, 1.4, basic(sign), 0, 6.55, 0.37);
     glow(f.w(0, 0.6)[0], 6.6, f.w(0, 0.6)[1]);
     const plank = ctex(256, 256, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = 'hsl(28,' + R(34, 42) + '%,' + R(46, 54) + '%)'; g.fillRect(0, i * 32, w, 31); g.fillStyle = 'rgba(80,45,25,.35)'; g.fillRect(0, i * 32 + 31, w, 1); for (let q = 0; q < 14; q++) { g.fillStyle = 'rgba(90,55,30,.12)'; g.fillRect(R(0, w), i * 32 + R(2, 28), R(10, 50), 1); } } }, { repeat: [5, 2.2] });
@@ -690,7 +679,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     pbox(f, 6.6, 0.14, 2.4, M('#4a5a66'), 0, 2.75, -0.4); pbox(f, 6.8, 0.1, 2.6, M('#e8a089'), 0, 2.87, -0.4);
     [[-3, 0.5], [3, 0.5], [-3, -1.2], [3, -1.2]].forEach(p => { pbox(f, 0.1, 2.7, 0.1, M('#4a5a66'), p[0], 1.35, p[1]); });
     pbox(f, 6, 2.4, 0.05, glass, 0, 1.35, -1.2); pbox(f, 0.05, 2.4, 1.6, glass, -3, 1.35, -0.4); pbox(f, 0.05, 2.4, 1.6, glass, 3, 1.35, -0.4);
-    const bus = ctex(256, 128, (g, w, h) => { g.fillStyle = '#16213a'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffb347'; g.font = '700 30px ' + FONT; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('퇴근버스 7', 18, 34); g.fillText('곧 도착', 18, 78); g.fillStyle = '#9fe0a8'; g.font = '700 24px ' + FONT; g.fillText('3분', 168, 78); g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(10, 52, w - 20, 2); });
+    const bus = ctex(256, 128, (g, w, h) => { g.fillStyle = '#16213a'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffb347'; g.font = '700 30px ' + FONT; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('마을버스 7', 18, 34); g.fillText('곧 도착', 18, 78); g.fillStyle = '#9fe0a8'; g.font = '700 24px ' + FONT; g.fillText('3분', 168, 78); g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(10, 52, w - 20, 2); });
     pplane(f, 2.6, 1.3, basic(bus), 0.4, 1.65, -1.14); glowS(f.w(0.4, -1.0)[0], 1.9, f.w(0.4, -1.0)[1]);
     const bp0 = f.w(-0.2, -0.6); benchSeat.add(bp0[0], 0.5, bp0[1], ry, 2.4, 0.09, 0.55, '#7a8a96'); const bb = f.w(-0.2, -0.85); benchBack.add(bb[0], 0.86, bb[1], ry, 2.4, 0.4, 0.06, '#7a8a96', -0.12);
     [-1, 1].forEach(sd => { const lp = f.w(-0.2 + sd * 1.05, -0.6); benchLeg.add(lp[0], 0.25, lp[1], ry, 0.08, 0.5, 0.5); });
@@ -717,14 +706,14 @@ function buildCity(THREE, scene, renderer, OPT) {
       const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ffe3a8'); gr.addColorStop(1, '#f2a860'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
       g.fillStyle = 'rgba(120,60,40,.5)'; g.beginPath(); g.arc(150, 90, 24, 0, TAU); g.fill(); g.fillRect(120, 112, 60, 90);
       g.fillStyle = '#fff3d0'; g.fillRect(260, 20, 230, 110); g.fillStyle = '#6a4a3a'; g.font = '700 26px ' + FONT; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.fillText('붕어빵 · 호떡', 276, 48); g.fillText('떡볶이 · 어묵', 276, 84); g.fillStyle = '#c4553c'; g.fillText('오늘도 수고했어요', 276, 116);
+      g.fillText('붕어빵 · 호떡', 276, 48); g.fillText('떡볶이 · 어묵', 276, 84); g.fillStyle = '#c4553c'; g.fillText('오늘도 푹 쉬어가요', 276, 116);
       g.fillStyle = '#7a5242'; g.fillRect(0, h - 22, w, 22);
     });
     pplane(f, 3.9, 1.5, basic(win), 1.1, 2.0, 0.01); pbox(f, 4.1, 0.1, 0.55, M('#8b6a52'), 1.1, 1.2, 0.28);
     const stripe = ctex(256, 32, (g, w, h) => { for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#f6ebd6' : '#3f8f8a'; g.fillRect(i * w / 10, 0, w / 10 + 1, h); } });
     const awn = toonMat({ map: stripe });
     pbox(f, 4.5, 0.1, 1.5, awn, 1.1, 2.95, 0.65, 0.24); pbox(f, 4.5, 0.32, 0.07, awn, 1.1, 2.55, 1.28);
-    const sg = textBoard(512, 110, '#3f8f8a', '#fff3d0', '퇴근길 분식 트럭', 56, (g, W, H) => { g.strokeStyle = '#fff3d0'; g.lineWidth = 4; g.strokeRect(8, 8, W - 16, H - 16); });
+    const sg = textBoard(512, 110, '#3f8f8a', '#fff3d0', '달콤 간식 트럭', 56, (g, W, H) => { g.strokeStyle = '#fff3d0'; g.lineWidth = 4; g.strokeRect(8, 8, W - 16, H - 16); });
     pbox(f, 3.4, 0.74, 0.14, M('#2b6b67'), 0.9, 3.75, -0.5); pplane(f, 3.2, 0.66, basic(sg), 0.9, 3.75, -0.42); glow(f.w(0.9, 0.3)[0], 3.9, f.w(0.9, 0.3)[1]);
     for (let i = 0; i <= 9; i++) { const u = i / 9, lx = -1.1 + u * 4.6, wp = f.w(lx, 1.25); glowS(wp[0], 2.55 - 0.18 * Math.sin(u * Math.PI), wp[1]); }
     const ab = f.w(-2.2, 2.0); const abm = mesh(unit, M('#f4ead8'), ab[0], 0.55, ab[1], ry); abm.scale.set(0.7, 1.1, 0.12); addCircle(ab[0], ab[1], 0.5);
@@ -852,7 +841,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   }
 
   city.update = function (dt, T, camPos, carT) {
-    windU.value = T; sky.position.copy(camPos); clouds.rotation.y += dt * 0.0022;
+    windU.value = T; sky.position.copy(camPos); clouds.position.set(camPos.x, 0, camPos.z); clouds.rotation.y += dt * 0.0022; const cx = city.cx, cz = city.cz;
     waterMat.uniforms.uT.value = T; sheetMat.uniforms.uT.value = T;
     for (let i = 0; i < NDROP; i++) {
       const d = dropData[i], t = ((T * 0.62 + d.ph) % 1) * 1.9, y = 4.7 + d.v0 * t - 4.9 * t * t;
@@ -862,15 +851,15 @@ function buildCity(THREE, scene, renderer, OPT) {
     dropGeo.attributes.position.needsUpdate = true;
     for (let i = 0; i < NMOTE; i++) {
       const d = moteD[i]; d.a += d.sp * 0.02 * dt;
-      motePos[i * 3] = Math.cos(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
+      motePos[i * 3] = cx + Math.cos(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
       motePos[i * 3 + 1] = d.y + Math.sin(T * d.bob + d.ph) * 0.5;
-      motePos[i * 3 + 2] = Math.sin(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
+      motePos[i * 3 + 2] = cz + Math.sin(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
     }
     moteGeo.attributes.position.needsUpdate = true;
     moteMat.color.copy(curNight > 0.5 ? FIRE : POLLEN); moteMat.opacity = 0.28 + 0.52 * curNight; moteMat.size = 0.22 + 0.16 * curNight;
     for (const b of birds) {
       b.a += b.v * dt; const wob = Math.sin(T * 0.5 + b.ph) * 6;
-      b.s.position.set(Math.cos(b.a) * b.r, b.y + wob, Math.sin(b.a) * b.r);
+      b.s.position.set(cx + Math.cos(b.a) * b.r, b.y + wob, cz + Math.sin(b.a) * b.r);
       b.s.material.opacity = 0.5 * (1 - curNight * 0.85);
       b.s.visible = curNight < 0.85;
     }
@@ -1010,6 +999,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     renderer.setRenderTarget(rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
     postMat.uniforms.tDiffuse.value = rt.texture; renderer.render(postScene, postCam);
   };
+  city.persist = new Set([sky, clouds, motes, ...birds.map(b => b.s)]);
   return city;
 }
 global.buildCity = buildCity;
