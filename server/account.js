@@ -3,10 +3,11 @@
 const D = require('../public/daily.js');
 const ZN = require('../public/zones.js');
 
-function newSave() { return { stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
+function newSave() { return { stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, gen: 0, orders: 0, hid: {}, hp: {}, hz: {}, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
 function norm(s) {
   const r = Object.assign(newSave(), s || {});
   if (!Array.isArray(r.own)) r.own = [0];
+  if (!r.hid || typeof r.hid !== 'object') r.hid = {}; if (!r.hp || typeof r.hp !== 'object') r.hp = {}; if (!r.hz || typeof r.hz !== 'object') r.hz = {};
   if (!r.m || !r.m.list) r.m = newSave().m;
   if (r.equip && !r.own.includes(r.equip)) r.equip = 0;
   return r;
@@ -15,7 +16,7 @@ function ensureDay(sv, day) {
   if (sv.m.day !== day) sv.m = { day, list: D.missionsFor(day), prog: {}, done: {}, vis: {} };
   return sv;
 }
-const pubState = sv => ({ stars: sv.stars, streak: sv.streak, best: sv.best, last: sv.last, stamp: sv.stamp, cards: sv.cards, own: sv.own, equip: sv.equip,
+const pubState = sv => ({ stars: sv.stars, streak: sv.streak, best: sv.best, last: sv.last, stamp: sv.stamp, cards: sv.cards, own: sv.own, equip: sv.equip, orders: sv.orders || 0, hid: sv.hid || {},
   m: { day: sv.m.day, list: sv.m.list, done: sv.m.done, prog: Object.fromEntries(Object.entries(sv.m.prog).map(([k, v]) => [k, Math.round(v * 10) / 10])) } });
 
 function checkin(sv, day) {
@@ -33,6 +34,7 @@ function checkin(sv, day) {
     if (lk.length) { const g = lk[Math.floor(Math.random() * lk.length)]; sv.own.push(g); gift = '🎁 일곱 번째 선물: ' + D.ACC[g].e + ' ' + D.ACC[g].n + '!'; }
     else { sv.stars += 30; gift = '🎁 일곱 번째 선물: ✨ 30'; }
   }
+  const hm = sv.streak >= 7 ? hidden(sv, 'streak7', 1) : null; if (hm) gift += (gift ? ' · ' : '') + hm;
   return '✨ +' + (base + bonus) + (bonus ? ' (연속 보너스 +' + bonus + ')' : '') + (gift ? ' · ' + gift : '');
 }
 function claim(sv, day, id) {
@@ -63,4 +65,10 @@ function visit(sv, day, zone) {
   if (zone === D.recZone(day) && !sv.m.done.rec && !(sv.m.prog.rec >= 1)) { sv.m.prog.rec = 1; fin = true; }
   return fin;
 }
-module.exports = { newSave, norm, ensureDay, pubState, checkin, claim, buy, progress, visit };
+/* 히든 미션 진행 (n만큼 올리고, 목표에 닿으면 보상). 이번에 달성했으면 안내 문구를 돌려줘요 */
+function hidden(sv, id, n) {
+  const def = D.HID.find(q => q.id === id); if (!def || sv.hid[id]) return null;
+  sv.hp[id] = (sv.hp[id] || 0) + (n || 1); if (sv.hp[id] < def.n) return null;
+  sv.hid[id] = 1; sv.stars += def.r; return '🕵️ 히든 미션 발견! "' + def.t + '" ✨ +' + def.r;
+}
+module.exports = { hidden, newSave, norm, ensureDay, pubState, checkin, claim, buy, progress, visit };

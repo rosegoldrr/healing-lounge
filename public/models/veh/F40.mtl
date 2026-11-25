@@ -1,0 +1,90 @@
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Lights
+Kd 1.0000 0.9000 0.6000
+d 0.62
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Windows
+Kd 0.3000 0.5500 0.7000
+d 0.63
+newmtl Cd01818
+Kd 0.6388 0.0055 0.0055
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Body
+Kd 0.8000 0.8000 0.8000
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Windows
+Kd 0.3000 0.5500 0.7000
+d 0.34
+newmtl Windows
+Kd 0.3000 0.5500 0.7000
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Cb9b9c2
+Kd 0.4936 0.4936 0.5480
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Windows
+Kd 0.3000 0.5500 0.7000
+d 0.63
+newmtl C151518
+Kd 0.0041 0.0041 0.0055
+d 1.00
+newmtl C1c1c20
+Kd 0.0078 0.0078 0.0104
+d 1.00
+newmtl Lights
+Kd 1.0000 0.9000 0.6000
+d 1.00
+newmtl Cff7a00
+Kd 1.0000 0.1975 0.0000
+d 1.00

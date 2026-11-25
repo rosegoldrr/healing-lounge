@@ -20,5 +20,17 @@
     const z = Z[id], g = z.gate, d = Math.hypot(g[0], g[1]);
     z.spawn = [+(g[0] - g[0] / d * 5.5).toFixed(2), +(g[1] - g[1] / d * 5.5).toFixed(2)];
   });
-  return { ZONES: Z, ORDER, PLAZA_GATES, GATE_RANGE: 5.5 };
+  /* 카페(광장 서쪽 180°) — 서버가 "카운터 앞에 있는지" 확인할 때도 같은 값을 써요 */
+  const CAFE = (() => {
+    const deg = 180, r = 44.5, fx = Math.cos(deg * D2R) * r, fz = Math.sin(deg * D2R) * r, ry = Math.atan2(-fx, -fz), c = Math.cos(ry), s = Math.sin(ry);
+    return { deg, r, fx, fz, ry, bw: 32, bd: 15, bh: 9,
+      bins: [[3.8, -1.9], [-3.8, -1.9]],                                      // 컵 휴지통 위치(카페 안쪽 좌표)
+      o: { lx0: -14.5, lx1: 14.5, lz0: -9.9, lz1: -6.8 },                       // 주문할 수 있는 구역(카운터 앞) — 카페 안쪽 좌표
+      toLocal: (x, z) => { const dx = x - fx, dz = z - fz; return { lx: dx * c - dz * s, lz: dx * s + dz * c }; },
+      world: (lx, lz) => [fx + lx * c + lz * s, fz - lx * s + lz * c],
+      nearBin: (x, z, r) => CAFE.bins.some(b => { const w = CAFE.world(b[0], b[1]); return Math.hypot(w[0] - x, w[1] - z) < r; }),
+      inside: (x, z) => { const L = CAFE.toLocal(x, z); return L.lx > -15.8 && L.lx < 15.8 && L.lz > -14.8 && L.lz < -0.1; },
+      atCounter: (x, z) => { const L = CAFE.toLocal(x, z); return L.lx >= CAFE.o.lx0 && L.lx <= CAFE.o.lx1 && L.lz >= CAFE.o.lz0 && L.lz <= CAFE.o.lz1; } };
+  })();
+  return { ZONES: Z, ORDER, PLAZA_GATES, GATE_RANGE: 5.5, CAFE };
 });

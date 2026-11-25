@@ -66,7 +66,7 @@ const server = http.createServer((req, res) => {
 /* ───────── 회원가입 · 로그인 API ───────── */
 function handleAuth(req, res, kind) {
   const H = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
-  if (req.method !== 'POST' || !['signup', 'login', 'me', 'delete'].includes(kind)) { res.writeHead(404, H); return res.end('{"ok":false}'); }
+  if (req.method !== 'POST' || !['signup', 'login', 'me', 'delete', 'forgot', 'reset', 'setemail'].includes(kind)) { res.writeHead(404, H); return res.end('{"ok":false}'); }
   let size = 0; const chunks = [];
   req.on('data', c => { size += c.length; if (size > 2048) { req.destroy(); } else chunks.push(c); });
   req.on('end', async () => {
@@ -74,6 +74,7 @@ function handleAuth(req, res, kind) {
     if (!body || typeof body !== 'object') body = {};
     try {
       const r = await AUTH.handle(kind, body, req);
+      if (kind === 'reset' && r.json.ok) { const p = online.get(r.json.kick); if (p) { p.acct = null; send(p.ws, { t: 'kicked', m: '비밀번호가 바뀌어서 다시 접속해야 해요' }); p.ws.close(); } delete r.json.kick; }
       if (kind === 'delete' && r.json.ok) { const p = online.get(r.json.deleted); if (p) { p.acct = null; send(p.ws, { t: 'kicked', m: '탈퇴가 완료됐어요' }); p.ws.close(); } delete r.json.deleted; }
       res.writeHead(r.code, H); res.end(JSON.stringify(r.json));
     } catch (e) { console.error('auth 오류', e.message); res.writeHead(500, H); res.end('{"ok":false,"err":"서버에 문제가 생겼어요. 잠시 후 다시 해 주세요"}'); }
@@ -83,6 +84,11 @@ const online = new Map();                                   // 계정 id -> 접�
 const kstDayNum = () => Math.floor((Date.now() + 9 * 3600 * 1000) / 86400000);
 function pushState(p, extra) { if (p.acct) { send(p.ws, Object.assign({ t: 'd', s: ACCT.pubState(ACCT.ensureDay(p.acct.sv, kstDayNum())) }, extra || {})); p.acct.push = false; } }
 function persist(p) { if (!p.acct) return; p.acct.dirty = false; p.acct.savedAt = Date.now(); DB.saveUser(p.acct.id, p.acct.sv).catch(e => console.error('기록 저장 실패', e.message)); }
+function hid(p, id, n) {                                    // 히든 미션 (달성하면 바로 안내 + 저장)
+  if (!p.acct) return;
+  const msg = ACCT.hidden(p.acct.sv, id, n); if (!msg) return;
+  p.acct.dirty = true; pushState(p, { msg }); persist(p);
+}
 function prog(p, id, n) {                                    // 미션 진행(서버가 직접 세요)
   if (!p.acct) return;
   const fin = ACCT.progress(p.acct.sv, kstDayNum(), id, n);
@@ -97,7 +103,7 @@ function getRoom(id) {
   if (!r) {
     const zone = ZN.ZONES[id] || ZN.ZONES.plaza;
     r = { id, R: zone.R, players: new Map(), poops: [], nextPoop: 1, cars: [], animals: [] };
-    if (id === 'plaza') r.cars = CARS.SPAWNS.map(c => ({ id: c.id, x: c.x, z: c.z, ry: c.ry, sp: 0, color: c.color, lights: 0, driver: 0, pass: 0 }));
+    if (id === 'plaza') r.cars = CARS.SPAWNS.map(c => ({ id: c.id, x: c.x, z: c.z, ry: c.ry, sp: 0, color: c.color, lights: 0, driver: 0, pass: 0, eng: 0, y: 0, pt: 0 }));
     if (id === 'plaza') r.animals = CARS.ANIMALS.map((a, i) => ({ id: i, kind: a.kind, hx: a.x, hz: a.z, x: a.x, z: a.z, ry: Math.random() * 6.28, tx: a.x, tz: a.z, pose: 0, mv: 0, until: Date.now() + Math.random() * 4000, hold: 0, owner: 0, poopAt: Date.now() + 120000 + Math.random() * 120000, still: 0 }));
     rooms.set(id, r);
   }
@@ -118,9 +124,9 @@ function broadcast(room, obj, exceptId) {
   const msg = JSON.stringify(obj);
   for (const p of room.players.values()) if (p.id !== exceptId && p.ws.readyState === 1) p.ws.send(msg);
 }
-const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass];
+const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass, c.eng || 0, round2(c.y || 0), round2(c.pt || 0)];
 const aniPub = a => [a.id, round2(a.x), round2(a.z), round2(a.ry), a.mv, a.pose, a.owner];
-const pub = p => ({ id: p.id, name: p.name, hue: p.hue, ac: p.ac || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
+const pub = p => ({ id: p.id, name: p.name, hue: p.hue, gen: p.gen || 0, ac: p.ac || 0, dr: p.dr || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
 function round2(v) { return Math.round(v * 100) / 100; }
 
 /* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
@@ -145,14 +151,14 @@ function spawnPoint(room) {
 
 function leaveCar(room, me) {
   const c = room.cars[me.ride.car], seat = me.ride.seat, sd = Math.sin(c.ry), cd = Math.cos(c.ry);
-  const side = seat === 0 ? -2.4 : 2.4;
+  const vi = CARS.vinfo(c.id), q = seat ? vi.p : vi.d, side = (q[0] ? Math.sign(q[0]) : 1) * (vi.k === 'dragon' ? 4.2 : 2.4);
   me.x = c.x + cd * side; me.z = c.z - sd * side; const r = Math.hypot(me.x, me.z); if (r > CFG.worldRadius) { me.x *= CFG.worldRadius / r; me.z *= CFG.worldRadius / r; }
   me.y = 0; me.st = 0; me.ride = null; me.lastT = Date.now(); me.mv = 0;
-  if (seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0;
+  if (seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } else c.eng = 0; } else c.pass = 0;
   send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
 }
 function releasePlayer(room, me) {
-  if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
+  if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (!c.pass) c.eng = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
   for (const a of room.animals) if (a.owner === me.id) { a.owner = 0; broadcast(room, { t: 'leash', id: a.id, owner: 0 }); }
 }
 const ACC_MAX = 7;                                         // 꾸미기 아이템 번호 0(없음)~7
@@ -197,8 +203,10 @@ wss.on('connection', (ws, req) => {
           acct = { id: u.id, username: u.username, sv: ACCT.norm(u.save), dirty: false, push: false, savedAt: 0 };
           ACCT.ensureDay(acct.sv, kstDayNum());
         }
+        const gIn = Math.floor(num(m.gen, -1)), gOk = gIn >= 0 && gIn <= 52, gen = acct ? (gOk ? gIn : (acct.sv.gen || 0)) : (gOk ? gIn : 0);
+        if (acct && gOk && acct.sv.gen !== gIn) { acct.sv.gen = gIn; acct.dirty = true; }
         const sp = spawnPoint(room), t2 = Date.now();
-        me = { id: nextId++, ws, name: cleanName(m.name), hue: Math.floor(num(m.hue, Math.random() * 360)) % 360, ac: acct ? acct.sv.equip : 0,
+        me = { id: nextId++, ws, name: cleanName(m.name), hue: Math.floor(num(m.hue, Math.random() * 360)) % 360, gen, ac: acct ? acct.sv.equip : 0,
                x: sp.x, z: sp.z, y: 0, st: 0, ride: null, ry: 0, mv: 0, lastT: t2, lastInput: t2, bags: 0, clean: 0, acct };
         if (acct) online.set(acct.id, me);
         room.players.set(me.id, me);
@@ -238,7 +246,8 @@ wss.on('connection', (ws, req) => {
       me.mv = Math.hypot(nx - me.x, nz - me.z) / dt > 0.4 ? (Math.hypot(nx - me.x, nz - me.z) / dt > 6.5 ? 2 : 1) : 0;
       const stepLen = Math.hypot(nx - me.x, nz - me.z);
       if (me.acct) {
-        if (me.st === 1) prog(me, 'sit', dt);
+        if (me.st === 1) { prog(me, 'sit', dt); if (room.id === 'plaza' && ZN.CAFE.inside(me.x, me.z)) hid(me, 'cafe_sit', 1); }
+        if (me.st === 3) hid(me, 'tree', 1);
         else if (me.st === 2 && room.id === 'stars') prog(me, 'star', dt);
         if (me.leash) prog(me, 'dog', dt);
         if (me.st === 0 && me.mv === 1) prog(me, 'walk', stepLen);
@@ -269,11 +278,26 @@ wss.on('connection', (ws, req) => {
       } else { const sp = spawnPoint(room); me.x = sp.x; me.z = sp.z; }
       me.y = 0; me.st = 0; me.mv = 0; me.lastT = now; me.ride = null;
       room.players.set(me.id, me);
-      if (me.acct && to !== 'plaza') { if (ACCT.visit(me.acct.sv, kstDayNum(), to)) send(ws, { t: 'toast', m: '✅ 미션 완료! 🎁 에서 보상을 받으세요' }); me.acct.dirty = true; me.acct.push = true; }
+      if (me.acct && to !== 'plaza') { if (!me.acct.sv.hz[to]) { me.acct.sv.hz[to] = 1; if (Object.keys(me.acct.sv.hz).length >= 4) hid(me, 'zones', 4); } if (ACCT.visit(me.acct.sv, kstDayNum(), to)) send(ws, { t: 'toast', m: '✅ 미션 완료! 🎁 에서 보상을 받으세요' }); me.acct.dirty = true; me.acct.push = true; }
       send(ws, Object.assign({ t: 'zone', zone: room.id, you: pub(me), players: [...room.players.values()].filter(p => p !== me).map(pub),
                  cfg: { tickHz: CFG.tickHz, worldRadius: room.R, maxSpeed: CFG.maxSpeed }, now: Date.now() }, roomState(room)));
       broadcast(room, { t: 'join', p: pub(me) }, me.id);
       return;
+    }
+    if (m.t === 'order') {                                  // 카페 주문 (별로 결제, 서버가 거리·잔액 확인)
+      me.lastInput = now;
+      if (!me.acct) return send(ws, { t: 'toast', m: '로그인하면 별로 주문할 수 있어요 🌿' });
+      if (room.id !== 'plaza' || me.ride || now - (me.lastOrder || 0) < 800) return;
+      const idx = DAILY.MENU.findIndex(q => q.id === String(m.id || '')); if (idx < 0) return;
+      if (!ZN.CAFE.atCounter(me.x, me.z)) return send(ws, { t: 'toast', m: '카운터 앞으로 와 주세요 ☕' });
+      const it = DAILY.MENU[idx], sv = me.acct.sv;
+      if (sv.stars < it.p) return send(ws, { t: 'toast', m: '✨ 이 부족해요 (' + it.n + ' ✨' + it.p + ')' });
+      me.lastOrder = now; sv.stars -= it.p; sv.orders = (sv.orders || 0) + 1;
+      me.dr = idx + 1; hid(me, 'first_order', 1); hid(me, 'regular', 1);
+      broadcast(room, { t: 'drink', id: me.id, d: me.dr });
+      send(ws, { t: 'ordered', item: it.id });
+      pushState(me, { msg: it.e + ' ' + it.n + ' 주문 완료! (✨ -' + it.p + ')' });
+      persist(me); return;
     }
     if (m.t === 'acc') {                                    // 꾸미기 아이템 바꾸기
       me.lastInput = now;
@@ -293,19 +317,20 @@ wss.on('connection', (ws, req) => {
       const seat = !c.driver ? 0 : !c.pass ? 1 : -1;
       if (seat < 0) return send(ws, { t: 'ride', ok: false, why: 'full' });
       if (seat === 0) c.driver = me.id; else c.pass = me.id;
-      me.ride = { car: i, seat }; me.st = 4; me.y = CARS.SEAT_Y; me.mv = 0;
+      hid(me, 'drive', 1); me.ride = { car: i, seat }; me.st = 4; me.y = (c.y || 0) + CARS.seatY(i, seat); me.mv = 0;
       return send(ws, { t: 'ride', ok: true, car: i, seat });
     }
-    if (m.t === 'unride') { me.lastInput = now; if (me.ride) leaveCar(room, me); return; }
+    if (m.t === 'unride') { me.lastInput = now; if (me.ride) { const c = room.cars[me.ride.car]; if (CARS.vinfo(c.id).fly && (c.y || 0) > 1.6) return send(ws, { t: 'toast', m: '🐉 먼저 땅에 내려앉아 주세요 (C 키로 하강)' }); leaveCar(room, me); } return; }
     if (m.t === 'drive') {                                  // 운전자가 보내는 자동차 상태
       me.lastInput = now;
       if (!me.ride || me.ride.seat !== 0) return;
       const c = room.cars[me.ride.car], dt = clamp((now - (me.lastDrive || now - 100)) / 1000, 0.02, 0.6); me.lastDrive = now;
       let nx = num(m.x, c.x), nz = num(m.z, c.z);
-      const d = Math.hypot(nx - c.x, nz - c.z), maxD = 34 * dt + 0.5;
+      const fl = CARS.vinfo(c.id).fly, d = Math.hypot(nx - c.x, nz - c.z), maxD = (fl ? 60 : 34) * dt + 0.5;
       if (d > maxD) { nx = c.x + (nx - c.x) * maxD / d; nz = c.z + (nz - c.z) * maxD / d; send(ws, { t: 'cfix', x: round2(nx), z: round2(nz) }); }
       const r = Math.hypot(nx, nz); if (r > CFG.worldRadius) { nx *= CFG.worldRadius / r; nz *= CFG.worldRadius / r; }
-      c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, 34);
+      c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, fl ? 55 : 34);
+      if (fl) { c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = 0; }
       return;
     }
     if (m.t === 'carset') {                                 // 색상 · 라이트
@@ -314,12 +339,19 @@ wss.on('connection', (ws, req) => {
       const c = room.cars[me.ride.car];
       if (m.c !== undefined) c.color = clamp(Math.floor(num(m.c, c.color)), 0, CARS.COLORS.length - 1);
       if (m.l !== undefined) c.lights = m.l ? 1 : 0;
+      if (m.e !== undefined) { c.eng = m.e ? 1 : 0; if (!c.eng) c.sp = c.sp; }
       return;
+    }
+    if (m.t === 'fire') {                                   // 드래곤 불 뿜기
+      me.lastInput = now;
+      if (!me.ride || me.ride.seat !== 0 || now - (me.lastFire || 0) < 150) return;
+      const c = room.cars[me.ride.car]; if (!CARS.vinfo(c.id).fly) return;
+      me.lastFire = now; return broadcast(room, { t: 'fire', car: c.id, on: m.on ? 1 : 0 });
     }
     if (m.t === 'horn') {
       me.lastInput = now;
       if (!me.ride || me.ride.seat !== 0 || now - (me.lastHorn || 0) < 110) return;
-      me.lastHorn = now; return broadcast(room, { t: 'horn', car: me.ride.car });
+      me.lastHorn = now; hid(me, 'horn', 1); return broadcast(room, { t: 'horn', car: me.ride.car });
     }
     /* ── 동물 ── */
     if (m.t === 'pet' || m.t === 'treat' || m.t === 'leash') {
@@ -344,14 +376,20 @@ wss.on('connection', (ws, req) => {
       const k = room.poops.findIndex(q => q.id === Math.floor(num(m.pid, -1)));
       if (k < 0 || me.ride) return;
       const q = room.poops[k]; if (Math.hypot(q.x - me.x, q.z - me.z) > 3.2) return;
-      room.poops.splice(k, 1); me.bags++;
+      room.poops.splice(k, 1); me.bags++; hid(me, 'poop', 1);
       broadcast(room, { t: 'poopdel', pid: q.id });
       return send(ws, { t: 'bag', n: me.bags, clean: me.clean });
+    }
+    if (m.t === 'dbin') {                                   // 마신 컵 휴지통에 버리기
+      me.lastInput = now;
+      if (!me.dr || room.id !== 'plaza' || me.ride || !ZN.CAFE.nearBin(me.x, me.z, 3.2)) return;
+      me.dr = 0; hid(me, 'cup', 1); broadcast(room, { t: 'drink', id: me.id, d: 0 });
+      return send(ws, { t: 'toast', m: '🗑️ 컵을 버렸어요' });
     }
     if (m.t === 'bin') {
       me.lastInput = now;
       if (me.ride || !me.bags || !CARS.BINS.some(b => Math.hypot(b[0] - me.x, b[1] - me.z) < 3.8)) return;
-      me.clean += me.bags; const n = me.bags; me.bags = 0;
+      me.clean += me.bags; const n = me.bags; me.bags = 0; hid(me, 'trash', 1);
       return send(ws, { t: 'bag', n: 0, clean: me.clean, thrown: n });
     }
     if (m.t === 'chat') {                                   // 말풍선 채팅
@@ -361,7 +399,7 @@ wss.on('connection', (ws, req) => {
       if (!txt) return;
       const f = FILTER.clean(txt);                          // 거친 말은 칭찬으로 바꿔서 내보내요
       txt = f.text || '…';
-      me.lastChat = now; prog(me, 'chat', 1);
+      me.lastChat = now; prog(me, 'chat', 1); hid(me, 'talker', 1);
       broadcast(room, { t: 'chat', id: me.id, x: txt });
       if (f.changed) send(ws, { t: 'softened' });
       return;
@@ -370,7 +408,7 @@ wss.on('connection', (ws, req) => {
       me.lastInput = now;
       const e = Math.floor(num(m.e, -1));
       if (e < 0 || e > 7 || now - (me.lastEmote || 0) < 700) return;
-      me.lastEmote = now; prog(me, 'emote', 1);
+      me.lastEmote = now; prog(me, 'emote', 1); hid(me, 'emotes', 1);
       return broadcast(room, { t: 'emote', id: me.id, e });
     }
     if (m.t === 'ping') { me.lastInput = now; send(ws, { t: 'pong', c: num(m.c, 0), s: Date.now() }); return; }
@@ -428,7 +466,8 @@ setInterval(() => {
   const now = Date.now(), dt = Math.min(0.25, (now - lastTick) / 1000); lastTick = now;
   for (const room of rooms.values()) {
     if (!room.players.size) continue;
-    for (const p of room.players.values()) if (p.ride) { const c = room.cars[p.ride.car], s = CARS.seatAt(c.x, c.z, c.ry, p.ride.seat); p.x = s[0]; p.z = s[1]; p.ry = c.ry; p.y = CARS.SEAT_Y; p.st = 4; p.mv = 0; }
+    for (const p of room.players.values()) if (p.ride) { const c = room.cars[p.ride.car], s = CARS.seatAt(c.x, c.z, c.ry, p.ride.seat, p.ride.car); p.x = s[0]; p.z = s[1]; p.ry = c.ry; p.y = (c.y || 0) + CARS.seatY(p.ride.car, p.ride.seat); p.st = 4; p.mv = 0; }
+    for (const c of room.cars) if (c.y > 0 && !c.driver && CARS.vinfo(c.id).fly) { c.y = Math.max(0, c.y - 16 * dt); c.sp = 0; c.pt = 0; }   // 주인 없는 드래곤은 천천히 내려앉아요
     stepAnimals(room, now, dt);
     for (let k = room.poops.length - 1; k >= 0; k--) if (now - room.poops[k].t > 8 * 60 * 1000) { broadcast(room, { t: 'poopdel', pid: room.poops[k].id }); room.poops.splice(k, 1); }
     const list = [...room.players.values()].map(p => [p.id, round2(p.x), round2(p.z), round2(p.ry), p.mv, round2(p.y || 0), p.st || 0]);
@@ -445,6 +484,7 @@ setInterval(() => {
     if (p.acct.push) pushState(p);
     if (p.acct.dirty && now - p.acct.savedAt > 6000) persist(p);
   }
+  
 }, 1500);
 
 /* 죽은 연결/방치된 연결 정리 */

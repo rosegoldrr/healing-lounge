@@ -28,6 +28,7 @@ async function init(opts) {
       ssl: opts.noSsl || /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false } });
     pool.on('error', e => console.error('db 연결 오류', e.message));
     await pool.query('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, pass TEXT NOT NULL, created BIGINT NOT NULL, last_login BIGINT, save TEXT NOT NULL DEFAULT \'{}\')');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
     secret = process.env.AUTH_SECRET || crypto.createHash('sha256').update('hl-secret:' + url).digest('hex');
   } else {
     mode = 'file';
@@ -40,7 +41,7 @@ async function init(opts) {
 }
 const getSecret = () => secret;
 const getMode = () => mode;
-const rowOf = r => r && { id: +r.id, username: r.username, pass: r.pass, created: +r.created, save: r.save ? JSON.parse(r.save) : {} };
+const rowOf = r => r && { id: +r.id, username: r.username, pass: r.pass, created: +r.created, email: r.email || '', save: r.save ? JSON.parse(r.save) : {} };
 
 async function getByName(u) {
   if (mode === 'pg') { const r = await pool.query('SELECT * FROM users WHERE username=$1', [u]); return rowOf(r.rows[0]); }
@@ -50,14 +51,27 @@ async function getById(id) {
   if (mode === 'pg') { const r = await pool.query('SELECT * FROM users WHERE id=$1', [id]); return rowOf(r.rows[0]); }
   const x = mem.users.find(q => q.id === id); return x ? Object.assign({}, x) : null;
 }
-async function createUser(username, pass) {                 // 이미 있으면 null
+async function getByEmail(e) {
+  if (!e) return null;
+  if (mode === 'pg') { const r = await pool.query('SELECT * FROM users WHERE email=$1 ORDER BY id LIMIT 1', [e]); return rowOf(r.rows[0]); }
+  const x = mem.users.find(q => q.email === e); return x ? Object.assign({}, x) : null;
+}
+async function setPass(id, pass) {
+  if (mode === 'pg') { await pool.query('UPDATE users SET pass=$2 WHERE id=$1', [id, pass]); return; }
+  const x = mem.users.find(q => q.id === id); if (x) { x.pass = pass; later(); }
+}
+async function setEmail(id, email) {
+  if (mode === 'pg') { await pool.query('UPDATE users SET email=$2 WHERE id=$1', [id, email]); return; }
+  const x = mem.users.find(q => q.id === id); if (x) { x.email = email; later(); }
+}
+async function createUser(username, pass, email) {                 // 이미 있으면 null
   const now = Date.now();
   if (mode === 'pg') {
-    try { const r = await pool.query('INSERT INTO users (username,pass,created,last_login,save) VALUES ($1,$2,$3,$3,$4) RETURNING *', [username, pass, now, '{}']); return rowOf(r.rows[0]); }
+    try { const r = await pool.query('INSERT INTO users (username,pass,created,last_login,save,email) VALUES ($1,$2,$3,$3,$4,$5) RETURNING *', [username, pass, now, '{}', email || null]); return rowOf(r.rows[0]); }
     catch (e) { if (e && (e.code === '23505' || /unique|duplicate/i.test(e.message))) return null; throw e; }
   }
   if (mem.users.some(q => q.username === username)) return null;
-  const u = { id: mem.nextId++, username, pass, created: now, save: {} }; mem.users.push(u); later(); return Object.assign({}, u);
+  const u = { id: mem.nextId++, username, pass, created: now, email: email || '', save: {} }; mem.users.push(u); later(); return Object.assign({}, u);
 }
 async function saveUser(id, save) {
   if (mode === 'pg') { await pool.query('UPDATE users SET save=$2 WHERE id=$1', [id, JSON.stringify(save)]); return; }
@@ -75,4 +89,4 @@ async function count() {
   if (mode === 'pg') { const r = await pool.query('SELECT COUNT(*) c FROM users'); return +r.rows[0].c; }
   return mem.users.length;
 }
-module.exports = { init, getByName, getById, createUser, saveUser, touchLogin, deleteUser, count, getSecret, getMode, _flush: flushFile };
+module.exports = { init, getByEmail, setPass, setEmail, getByName, getById, createUser, saveUser, touchLogin, deleteUser, count, getSecret, getMode, _flush: flushFile };
