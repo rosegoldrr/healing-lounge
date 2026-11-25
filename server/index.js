@@ -318,7 +318,7 @@ wss.on('connection', (ws, req) => {
     }
     if (m.t === 'horn') {
       me.lastInput = now;
-      if (!me.ride || me.ride.seat !== 0 || now - (me.lastHorn || 0) < 450) return;
+      if (!me.ride || me.ride.seat !== 0 || now - (me.lastHorn || 0) < 110) return;
       me.lastHorn = now; return broadcast(room, { t: 'horn', car: me.ride.car });
     }
     /* ── 동물 ── */
