@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: office-worker-city
-    runtime: node
-    plan: free
-    buildCommand: npm install
-    startCommand: npm start
-    healthCheckPath: /healthz
