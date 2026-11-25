@@ -1,6 +1,6 @@
 'use strict';
 /*
-  Office Worker City — 멀티플레이 서버 (1단계: 접속 + 이동 동기화)
+  Office Worker City — 멀티플레이 서버 (접속 + 이동 동기화)
   - 정적 파일(public/)과 WebSocket(/ws)을 한 포트에서 같이 제공합니다.
   - 서버가 이동 속도/범위를 검증해서, 클라이언트가 위치를 조작해도 통하지 않게 합니다.
 */
@@ -78,10 +78,10 @@ function broadcast(room, obj, exceptId) {
 const pub = p => ({ id: p.id, name: p.name, hue: p.hue, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv });
 function round2(v) { return Math.round(v * 100) / 100; }
 
-/* 입장 위치: 광장 중앙 근처에서 겹치지 않게 */
+/* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
 function spawnPoint(room) {
   for (let k = 0; k < 20; k++) {
-    const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 6;
+    const a = Math.random() * Math.PI * 2, d = 17.5 + Math.random() * 3;
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
     let ok = true;
     for (const p of room.players.values()) if ((p.x - x) ** 2 + (p.z - z) ** 2 < 1.6) { ok = false; break; }

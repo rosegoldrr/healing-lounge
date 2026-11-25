@@ -13,7 +13,7 @@
   #hud{position:fixed;left:14px;top:14px;padding:10px 14px;font-size:13px;line-height:1.5;pointer-events:none;display:none}
   #hud b{font-size:15px}
   #status{position:fixed;left:50%;top:14px;transform:translateX(-50%);padding:8px 16px;font-size:13px;display:none;pointer-events:none;text-align:center}
-  #login{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#2b3265,#e58a6d)}
+  #login{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at 50% 55%,rgba(36,26,70,.50),rgba(36,26,70,.18))}
   #card{width:min(420px,100%);padding:26px;text-align:center}
   #card h1{margin:0 0 6px;font-size:26px}
   #card p{margin:0 0 18px;font-size:13.5px;opacity:.92}
@@ -51,6 +51,7 @@
 </div>
 
 <script src="/three.min.js"></script>
+<script src="/city.js"></script>
 <script>
 (function(){
 'use strict';
@@ -60,21 +61,15 @@ const isTouch=(matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchsta
 if(isTouch)document.body.classList.add('touch');
 if(typeof THREE==='undefined'){$('#msg').textContent='3D 화면을 불러오지 못했어요. 새로고침해 주세요.';return;}
 
-/* ───── 3D 장면 (1단계: 임시 광장) ───── */
+/* ───── 3D 장면 (2단계: 퇴근길 광장) ───── */
 const canvas=$('#c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(innerWidth,innerHeight,false);
-const scene=new THREE.Scene();scene.background=new THREE.Color('#f0a07c');scene.fog=new THREE.Fog('#f0a07c',50,170);
-const cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.1,400);
-scene.add(new THREE.HemisphereLight('#ffe2c4','#6b5b8a',0.95));
-const sun=new THREE.DirectionalLight('#ffd0a0',0.8);sun.position.set(-30,40,20);scene.add(sun);
-const ground=new THREE.Mesh(new THREE.CircleGeometry(62,48),new THREE.MeshLambertMaterial({color:'#cfc6b8'}));ground.rotation.x=-Math.PI/2;scene.add(ground);
-const grid=new THREE.GridHelper(120,40,'#b6ab9b','#bdb2a2');grid.position.y=0.01;scene.add(grid);
-{ /* 임시 건물 — 2단계에서 진짜 도시 배경으로 교체 */
-  const mat=new THREE.MeshLambertMaterial({color:'#7d86a8'});
-  for(let i=0;i<14;i++){const a=i/14*Math.PI*2,r=72+(i%3)*6,h=26+(i*7%5)*12;
-    const b=new THREE.Mesh(new THREE.BoxGeometry(12,h,12),mat);b.position.set(Math.cos(a)*r,h/2,Math.sin(a)*r);scene.add(b);}
-}
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.75));renderer.setSize(innerWidth,innerHeight,false);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.4,700);
+const city=buildCity(THREE,scene,renderer);
+const blobGeo=new THREE.PlaneGeometry(1.5,1.5);blobGeo.rotateX(-Math.PI/2);
+const blobMat=new THREE.MeshBasicMaterial({map:city.blobTex,color:'#241838',transparent:true,opacity:0.5,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
 
 /* ───── 아바타 ───── */
 function nameSprite(text){
@@ -91,6 +86,7 @@ function makeAvatar(name,hue){
   const head=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,12),new THREE.MeshLambertMaterial({color:'#ffe2d0'}));head.position.y=1.78;g.add(head);
   const hair=new THREE.Mesh(new THREE.SphereGeometry(0.35,16,12,0,Math.PI*2,0,Math.PI*0.55),new THREE.MeshLambertMaterial({color:'#4a3a5c'}));hair.position.y=1.82;hair.rotation.x=-0.2;g.add(hair);
   const legs=[-1,1].map(s=>{const p=new THREE.Group();p.position.set(s*0.14,0.55,0);const m=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.55,8),new THREE.MeshLambertMaterial({color:'#3b3f5c'}));m.position.y=-0.27;p.add(m);g.add(p);return p;});
+  const bl=new THREE.Mesh(blobGeo,blobMat);bl.position.y=0.09;bl.renderOrder=2;g.add(bl);
   g.add(nameSprite(name));
   g.userData={legs,body,head};
   scene.add(g);return g;
@@ -138,7 +134,7 @@ function addOther(p){
 function onMsg(m){
   if(m.t==='welcome'){
     joined=true;myId=m.id;cfg=m.cfg||cfg;
-    me.x=m.you.x;me.z=m.you.z;me.ry=0;me.g=makeAvatar(m.you.name,m.you.hue);
+    me.x=m.you.x;me.z=m.you.z;me.ry=0;city.resolve(me,0.38);me.g=makeAvatar(m.you.name,m.you.hue);
     m.players.forEach(addOther);
     $('#login').style.display='none';$('#hud').style.display='block';if(!isTouch)$('#help').style.display='block';
     if(isTouch)$('#joy').classList.add('on');
@@ -186,6 +182,7 @@ function stepMe(dt){
   const tx=(-s*fz+c*fx)*sp,tz=(-c*fz-s*fx)*sp;
   const k=1-Math.exp(-14*dt);me.vx+=(tx-me.vx)*k;me.vz+=(tz-me.vz)*k;
   me.x+=me.vx*dt;me.z+=me.vz*dt;
+  city.resolve(me,0.38);
   const r=Math.hypot(me.x,me.z);if(r>cfg.worldRadius){me.x*=cfg.worldRadius/r;me.z*=cfg.worldRadius/r;}
   const hs=Math.hypot(me.vx,me.vz);me.mv=hs>0.4?(hs>6.5?2:1):0;
   if(hs>0.4){const t=Math.atan2(me.vx,me.vz);let d=t-me.ry;d=Math.atan2(Math.sin(d),Math.cos(d));me.ry+=d*(1-Math.exp(-12*dt));}
@@ -212,12 +209,17 @@ function loop(now){
       let d=o.try-o.ry;d=Math.atan2(Math.sin(d),Math.cos(d));o.ry+=d*k;
       o.g.position.set(o.x,0,o.z);o.g.rotation.y=o.ry;animateAvatar(o.g,o.mv,dt,T+o.x);
     });
-    const cp=Math.cos(pitch);
-    cam.position.set(me.x+Math.sin(yaw)*cp*dist,1.6+Math.sin(pitch)*dist,me.z+Math.cos(yaw)*cp*dist);
+    const cp=Math.cos(pitch);let cd=dist,cx=0,cy=0,cz=0;
+    const place=d=>{cx=me.x+Math.sin(yaw)*cp*d;cy=1.6+Math.sin(pitch)*d;cz=me.z+Math.cos(yaw)*cp*d;};
+    for(let q=0;q<14;q++){place(cd);if(!city.boxBlocked(cx,cy,cz)&&!city.lineBlocked(me.x,1.5,me.z,cx,cy,cz,false))break;cd*=0.86;}
+    place(cd);
+    if(city.treeBlocked(cx,cy,cz)||city.lineBlocked(me.x,1.5,me.z,cx,cy,cz,true))cy=Math.min(cy,1.85);   /* 나무 아래로 카메라를 낮춰서 가려지지 않게 */
+    cam.position.set(cx,cy,cz);
     cam.lookAt(me.x,1.5,me.z);
   }else{
-    yaw+=dt*0.1;cam.position.set(Math.sin(yaw)*30,12,Math.cos(yaw)*30);cam.lookAt(0,4,0);
+    yaw+=dt*0.07;cam.position.set(Math.sin(yaw)*30,9,Math.cos(yaw)*30);cam.lookAt(0,4.5,0);
   }
+  city.update(dt,T,cam.position);
   renderer.render(scene,cam);
 }
 addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();});
@@ -234,7 +236,7 @@ function enter(){
 }
 $('#go').addEventListener('click',enter);
 $('#name').addEventListener('keydown',e=>{if(e.key==='Enter')enter();});
-window.__lounge={get me(){return me;},others,get joined(){return joined;}};
+window.__lounge={renderer,get me(){return me;},others,get joined(){return joined;},city,cam,setView(y,p,d){yaw=y;pitch=p;if(d)dist=d;},tp(x,z){me.x=x;me.z=z;me.vx=me.vz=0;}};
 })();
 </script>
 </body>
