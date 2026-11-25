@@ -1,0 +1,17 @@
+{
+  "name": "healing-lounge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Healing Lounge - multiplayer server",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.23.1",
+    "ws": "^8.18.0"
+  }
+}
