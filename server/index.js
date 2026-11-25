@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const CARS = require('../public/cars.js');
-const T0 = Date.now();                                    // 자동차 시계의 기준 시각
+const FILTER = require('./filter.js');
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -19,7 +19,7 @@ const CFG = {
   maxPlayersPerRoom: parseInt(process.env.MAX_PLAYERS, 10) || 40, // 방 하나 최대 인원 (무료 서버는 작게)
   tickHz: 10,                 // 서버가 상태를 뿌리는 횟수/초
   maxSpeed: 15,               // m/s — 달리기(약 10.5)보다 여유
-  worldRadius: 60,            // 광장 반경(m). 여기 밖으로는 못 나감
+  worldRadius: CARS.WORLD_R,   // 걷기·운전 가능 반경(m)
   maxMsgPerSec: 40,           // 접속자 1명이 보낼 수 있는 메시지 수/초
   maxMsgBytes: 512,           // 메시지 최대 크기
   nameMax: 12,
@@ -61,7 +61,12 @@ const server = http.createServer((req, res) => {
 const rooms = new Map();
 function getRoom(id) {
   let r = rooms.get(id);
-  if (!r) { r = { id, players: new Map() }; rooms.set(id, r); }
+  if (!r) {
+    r = { id, players: new Map(), poops: [], nextPoop: 1 };
+    r.cars = CARS.SPAWNS.map(c => ({ id: c.id, x: c.x, z: c.z, ry: c.ry, sp: 0, color: c.color, lights: 0, driver: 0, pass: 0 }));
+    r.animals = CARS.ANIMALS.map((a, i) => ({ id: i, kind: a.kind, hx: a.x, hz: a.z, x: a.x, z: a.z, ry: Math.random() * 6.28, tx: a.x, tz: a.z, pose: 0, mv: 0, until: Date.now() + Math.random() * 4000, hold: 0, owner: 0, poopAt: Date.now() + 120000 + Math.random() * 120000, still: 0 }));
+    rooms.set(id, r);
+  }
   return r;
 }
 let nextId = 1;
@@ -70,6 +75,7 @@ const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
 
 function cleanName(raw) {
   let s = String(raw == null ? '' : raw).replace(/[\u0000-\u001f\u007f<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim();
+  s = FILTER.clean(s).text;
   s = Array.from(s).slice(0, CFG.nameMax).join('');
   return s || '손님' + Math.floor(100 + Math.random() * 900);
 }
@@ -78,8 +84,9 @@ function broadcast(room, obj, exceptId) {
   const msg = JSON.stringify(obj);
   for (const p of room.players.values()) if (p.id !== exceptId && p.ws.readyState === 1) p.ws.send(msg);
 }
+const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass];
+const aniPub = a => [a.id, round2(a.x), round2(a.z), round2(a.ry), a.mv, a.pose, a.owner];
 const pub = p => ({ id: p.id, name: p.name, hue: p.hue, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
-const carT = () => (Date.now() - T0) / 1000;
 function round2(v) { return Math.round(v * 100) / 100; }
 
 /* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
@@ -94,6 +101,18 @@ function spawnPoint(room) {
   return { x: 0, z: 0 };
 }
 
+function leaveCar(room, me) {
+  const c = room.cars[me.ride.car], seat = me.ride.seat, sd = Math.sin(c.ry), cd = Math.cos(c.ry);
+  const side = seat === 0 ? -2.4 : 2.4;
+  me.x = c.x + cd * side; me.z = c.z - sd * side; const r = Math.hypot(me.x, me.z); if (r > CFG.worldRadius) { me.x *= CFG.worldRadius / r; me.z *= CFG.worldRadius / r; }
+  me.y = 0; me.st = 0; me.ride = null; me.lastT = Date.now(); me.mv = 0;
+  if (seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0;
+  send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
+}
+function releasePlayer(room, me) {
+  if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
+  for (const a of room.animals) if (a.owner === me.id) { a.owner = 0; broadcast(room, { t: 'leash', id: a.id, owner: 0 }); }
+}
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: CFG.maxMsgBytes });
 wss.on('connection', (ws, req) => {
   ws.isAlive = true;
@@ -118,10 +137,11 @@ wss.on('connection', (ws, req) => {
       if (room.players.size >= CFG.maxPlayersPerRoom) { send(ws, { t: 'full' }); return ws.close(); }
       const sp = spawnPoint(room);
       me = { id: nextId++, ws, name: cleanName(m.name), hue: Math.floor(num(m.hue, Math.random() * 360)) % 360,
-             x: sp.x, z: sp.z, y: 0, st: 0, ride: null, ry: 0, mv: 0, lastT: now, lastInput: now };
+             x: sp.x, z: sp.z, y: 0, st: 0, ride: null, ry: 0, mv: 0, lastT: now, lastInput: now, bags: 0, clean: 0 };
       room.players.set(me.id, me);
       send(ws, { t: 'welcome', id: me.id, you: pub(me), players: [...room.players.values()].filter(p => p !== me).map(pub),
-                 cfg: { tickHz: CFG.tickHz, worldRadius: CFG.worldRadius, maxSpeed: CFG.maxSpeed }, now: Date.now(), t0: T0 });
+                 cfg: { tickHz: CFG.tickHz, worldRadius: CFG.worldRadius, maxSpeed: CFG.maxSpeed }, now: Date.now(),
+                 cars: room.cars.map(carPub), animals: room.animals.map(aniPub), poops: room.poops.map(q => [q.id, round2(q.x), round2(q.z)]) });
       broadcast(room, { t: 'join', p: pub(me) }, me.id);
       return;
     }
@@ -147,29 +167,83 @@ wss.on('connection', (ws, req) => {
     if (m.t === 'ride') {                                   // 자동차 타기 요청
       me.lastInput = now;
       const i = Math.floor(num(m.car, -1));
-      if (me.ride || i < 0 || i >= CARS.N) return;
-      const cp = CARS.pos(i, carT());
-      if (Math.hypot(cp[0] - me.x, cp[1] - me.z) > CFG.boardRange) return send(ws, { t: 'ride', ok: false, why: 'far' });
-      const used = [...room.players.values()].filter(p => p.ride && p.ride.car === i).map(p => p.ride.seat);
-      const seat = [0, 1].find(s => !used.includes(s));
-      if (seat === undefined) return send(ws, { t: 'ride', ok: false, why: 'full' });
-      me.ride = { car: i, seat }; me.st = 4; me.y = CARS.SEAT_Y;
+      if (me.ride || i < 0 || i >= room.cars.length || me.leash) return me.leash ? send(ws, { t: 'toast', m: '산책 중에는 차를 탈 수 없어요 🐕' }) : undefined;
+      const c = room.cars[i];
+      if (Math.hypot(c.x - me.x, c.z - me.z) > CFG.boardRange) return send(ws, { t: 'ride', ok: false, why: 'far' });
+      const seat = !c.driver ? 0 : !c.pass ? 1 : -1;
+      if (seat < 0) return send(ws, { t: 'ride', ok: false, why: 'full' });
+      if (seat === 0) c.driver = me.id; else c.pass = me.id;
+      me.ride = { car: i, seat }; me.st = 4; me.y = CARS.SEAT_Y; me.mv = 0;
       return send(ws, { t: 'ride', ok: true, car: i, seat });
     }
-    if (m.t === 'unride') {                                 // 내리기: 광장 가장자리로
+    if (m.t === 'unride') { me.lastInput = now; if (me.ride) leaveCar(room, me); return; }
+    if (m.t === 'drive') {                                  // 운전자가 보내는 자동차 상태
       me.lastInput = now;
-      if (!me.ride) return;
-      const cp = CARS.pos(me.ride.car, carT()), r = Math.hypot(cp[0], cp[1]) || 1;
-      me.x = cp[0] / r * 58; me.z = cp[1] / r * 58; me.y = 0; me.st = 0; me.ride = null; me.lastT = now;
-      return send(ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
+      if (!me.ride || me.ride.seat !== 0) return;
+      const c = room.cars[me.ride.car], dt = clamp((now - (me.lastDrive || now - 100)) / 1000, 0.02, 0.6); me.lastDrive = now;
+      let nx = num(m.x, c.x), nz = num(m.z, c.z);
+      const d = Math.hypot(nx - c.x, nz - c.z), maxD = 34 * dt + 0.5;
+      if (d > maxD) { nx = c.x + (nx - c.x) * maxD / d; nz = c.z + (nz - c.z) * maxD / d; send(ws, { t: 'cfix', x: round2(nx), z: round2(nz) }); }
+      const r = Math.hypot(nx, nz); if (r > CFG.worldRadius) { nx *= CFG.worldRadius / r; nz *= CFG.worldRadius / r; }
+      c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, 34);
+      return;
+    }
+    if (m.t === 'carset') {                                 // 색상 · 라이트
+      me.lastInput = now;
+      if (!me.ride || me.ride.seat !== 0) return;
+      const c = room.cars[me.ride.car];
+      if (m.c !== undefined) c.color = clamp(Math.floor(num(m.c, c.color)), 0, CARS.COLORS.length - 1);
+      if (m.l !== undefined) c.lights = m.l ? 1 : 0;
+      return;
+    }
+    if (m.t === 'horn') {
+      me.lastInput = now;
+      if (!me.ride || me.ride.seat !== 0 || now - (me.lastHorn || 0) < 450) return;
+      me.lastHorn = now; return broadcast(room, { t: 'horn', car: me.ride.car });
+    }
+    /* ── 동물 ── */
+    if (m.t === 'pet' || m.t === 'treat' || m.t === 'leash') {
+      me.lastInput = now;
+      const a = room.animals[Math.floor(num(m.id, -1))];
+      if (!a || me.ride || Math.hypot(a.x - me.x, a.z - me.z) > 4.5) return;
+      if (m.t === 'leash') {
+        if (a.owner === me.id) { a.owner = 0; me.leash = 0; return broadcast(room, { t: 'leash', id: a.id, owner: 0 }); }
+        if (a.kind !== 'dog') return send(ws, { t: 'toast', m: '고양이는 산책을 싫어해요 😾' });
+        if (a.owner) return send(ws, { t: 'toast', m: '다른 분과 산책 중이에요' });
+        if (me.leash) return send(ws, { t: 'toast', m: '이미 산책 중인 강아지가 있어요' });
+        a.owner = me.id; me.leash = a.id + 1; a.poopAt = now + 25000 + Math.random() * 30000;
+        return broadcast(room, { t: 'leash', id: a.id, owner: me.id });
+      }
+      if (now - (me.lastAct || 0) < 500) return; me.lastAct = now;
+      a.hold = now + (m.t === 'treat' ? 2600 : 2200); a.pose = a.kind === 'dog' ? 3 : 1; a.ry = Math.atan2(me.x - a.x, me.z - a.z); a.mv = 0;
+      return broadcast(room, { t: 'afx', id: a.id, e: m.t });
+    }
+    if (m.t === 'pickup') {
+      me.lastInput = now;
+      const k = room.poops.findIndex(q => q.id === Math.floor(num(m.pid, -1)));
+      if (k < 0 || me.ride) return;
+      const q = room.poops[k]; if (Math.hypot(q.x - me.x, q.z - me.z) > 3.2) return;
+      room.poops.splice(k, 1); me.bags++;
+      broadcast(room, { t: 'poopdel', pid: q.id });
+      return send(ws, { t: 'bag', n: me.bags, clean: me.clean });
+    }
+    if (m.t === 'bin') {
+      me.lastInput = now;
+      if (me.ride || !me.bags || !CARS.BINS.some(b => Math.hypot(b[0] - me.x, b[1] - me.z) < 3.8)) return;
+      me.clean += me.bags; const n = me.bags; me.bags = 0;
+      return send(ws, { t: 'bag', n: 0, clean: me.clean, thrown: n });
     }
     if (m.t === 'chat') {                                   // 말풍선 채팅
       me.lastInput = now;
       if (now - (me.lastChat || 0) < 1100) return;
       let txt = Array.from(String(m.x == null ? '' : m.x).replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim()).slice(0, 60).join('');
       if (!txt) return;
+      const f = FILTER.clean(txt);                          // 거친 말은 칭찬으로 바꿔서 내보내요
+      txt = f.text || '…';
       me.lastChat = now;
-      return broadcast(room, { t: 'chat', id: me.id, x: txt });
+      broadcast(room, { t: 'chat', id: me.id, x: txt });
+      if (f.changed) send(ws, { t: 'softened' });
+      return;
     }
     if (m.t === 'emote') {                                  // 이모티콘
       me.lastInput = now;
@@ -182,19 +256,61 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (me && room) { room.players.delete(me.id); broadcast(room, { t: 'leave', id: me.id }); }
+    if (me && room) { releasePlayer(room, me); room.players.delete(me.id); broadcast(room, { t: 'leave', id: me.id }); }
   });
   ws.on('error', () => {});
 });
 
+/* 동물 움직임 */
+const ASPD = { cat: 1.3, dog: 1.9 };
+function stepAnimals(room, now, dt) {
+  for (const a of room.animals) {
+    const owner = a.owner ? room.players.get(a.owner) : null;
+    if (a.owner && !owner) a.owner = 0;
+    a.mv = 0;
+    if (now < a.hold) continue;                             // 쓰다듬는 중 · 똥 싸는 중
+    if (owner) {
+      const fx = Math.sin(owner.ry), fz = Math.cos(owner.ry);
+      const gx = owner.x - fx * 1.8 + fz * 0.9, gz = owner.z - fz * 1.8 - fx * 0.9;
+      const d = Math.hypot(gx - a.x, gz - a.z), od = Math.hypot(owner.x - a.x, owner.z - a.z);
+      if (od > 14) { a.x = owner.x - fx * 2; a.z = owner.z - fz * 2; }
+      else if (d > 0.5) {
+        const sp = Math.min(9, 1.6 + d * 2.4) * dt, k = Math.min(1, sp / d);
+        a.x += (gx - a.x) * k; a.z += (gz - a.z) * k; a.ry = Math.atan2(gx - a.x, gz - a.z); a.mv = sp / dt > 4.5 ? 2 : 1; a.pose = 0; a.still = 0;
+        if (now > a.poopAt && room.poops.length < 18) { a.poopAt = now + 45000 + Math.random() * 40000; a.hold = now + 1500; a.pose = 4; dropPoop(room, a, now); }
+      } else { a.still += dt; a.pose = a.still > 2 ? 1 : 0; }
+      continue;
+    }
+    if (now > a.until) {                                    // 다음 행동 고르기
+      const q = Math.random();
+      if (q < 0.42) { const ang = Math.random() * 6.28, rr = Math.random() * (a.kind === 'cat' ? 4 : 6); a.tx = a.hx + Math.cos(ang) * rr; a.tz = a.hz + Math.sin(ang) * rr; a.pose = 0; a.until = now + 9000; }
+      else if (q < 0.72) { a.pose = 1; a.tx = a.x; a.tz = a.z; a.until = now + 4000 + Math.random() * 6000; }
+      else { a.pose = 2; a.tx = a.x; a.tz = a.z; a.until = now + 6000 + Math.random() * 9000; }
+      if (a.kind === 'dog' && now > a.poopAt) { a.poopAt = now + 150000 + Math.random() * 150000; if (room.poops.length < 18) { a.pose = 4; a.hold = now + 1500; dropPoop(room, a, now); } }
+    }
+    if (a.pose === 0) {
+      const d = Math.hypot(a.tx - a.x, a.tz - a.z);
+      if (d > 0.3) { const sp = ASPD[a.kind] * dt, k = Math.min(1, sp / d); a.x += (a.tx - a.x) * k; a.z += (a.tz - a.z) * k; a.ry = Math.atan2(a.tx - a.x, a.tz - a.z); a.mv = 1; }
+      else { a.until = Math.min(a.until, now + 500 + Math.random() * 1500); }
+    }
+  }
+}
+function dropPoop(room, a, now) {
+  const fx = Math.sin(a.ry), fz = Math.cos(a.ry), q = { id: room.nextPoop++, x: a.x - fx * 0.5, z: a.z - fz * 0.5, t: now };
+  room.poops.push(q); broadcast(room, { t: 'poop', p: [q.id, round2(q.x), round2(q.z)] });
+}
+
 /* 상태 뿌리기 */
+let lastTick = Date.now();
 setInterval(() => {
+  const now = Date.now(), dt = Math.min(0.25, (now - lastTick) / 1000); lastTick = now;
   for (const room of rooms.values()) {
     if (!room.players.size) continue;
-    const ct = carT();
-    for (const p of room.players.values()) if (p.ride) { const s = CARS.seat(p.ride.car, ct, p.ride.seat); p.x = s[0]; p.z = s[1]; p.ry = s[2]; p.y = CARS.SEAT_Y; p.st = 4; p.mv = 0; }
+    for (const p of room.players.values()) if (p.ride) { const c = room.cars[p.ride.car], s = CARS.seatAt(c.x, c.z, c.ry, p.ride.seat); p.x = s[0]; p.z = s[1]; p.ry = c.ry; p.y = CARS.SEAT_Y; p.st = 4; p.mv = 0; }
+    stepAnimals(room, now, dt);
+    for (let k = room.poops.length - 1; k >= 0; k--) if (now - room.poops[k].t > 8 * 60 * 1000) { broadcast(room, { t: 'poopdel', pid: room.poops[k].id }); room.poops.splice(k, 1); }
     const list = [...room.players.values()].map(p => [p.id, round2(p.x), round2(p.z), round2(p.ry), p.mv, round2(p.y || 0), p.st || 0]);
-    const msg = JSON.stringify({ t: 's', p: list });
+    const msg = JSON.stringify({ t: 's', p: list, c: room.cars.map(carPub), a: room.animals.map(aniPub) });
     for (const p of room.players.values()) if (p.ws.readyState === 1) p.ws.send(msg);
   }
 }, 1000 / CFG.tickHz);

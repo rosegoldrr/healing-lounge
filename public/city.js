@@ -32,9 +32,12 @@ function buildCity(THREE, scene, renderer, OPT) {
   }
   const matCache = {};
   /* ── 지브리풍 도구: 툰 램프 · 림라이트 ── */
-  const gradMap = new THREE.DataTexture(new Uint8Array([150, 150, 150, 255, 178, 178, 178, 255, 208, 208, 208, 255, 236, 236, 236, 255, 255, 255, 255, 255]), 5, 1, THREE.RGBAFormat);
-  gradMap.minFilter = gradMap.magFilter = THREE.LinearFilter; gradMap.generateMipmaps = false; gradMap.needsUpdate = true;
-  const rimU = { value: new THREE.Color('#ffe2b8') }, rimK = { value: 0.26 };
+  const gradMap = new THREE.DataTexture(new Uint8Array([
+    176, 180, 200, 255, 176, 180, 200, 255, 176, 180, 200, 255,
+    222, 221, 224, 255, 222, 221, 224, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]), 8, 1, THREE.RGBAFormat);
+  gradMap.minFilter = gradMap.magFilter = THREE.NearestFilter; gradMap.generateMipmaps = false; gradMap.needsUpdate = true;
+  const rimU = { value: new THREE.Color('#ffe2b8') }, rimK = { value: 0.34 };
   function toonMat(c, extra) {
     if (c && typeof c === 'object' && !c.isColor) { extra = c; c = extra.color || '#ffffff'; }
     const m = new THREE.MeshToonMaterial(Object.assign({ color: c, gradientMap: gradMap }, extra || {}));
@@ -48,7 +51,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   function M(color, o) { const k = color + JSON.stringify(o || {}); return matCache[k] || (matCache[k] = toonMat(color, o)); }
   const unit = new THREE.BoxGeometry(1, 1, 1);
   const cyl8 = new THREE.CylinderGeometry(1, 1, 1, 10);
-  function mesh(geo, mat, x, y, z, ry) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (ry) m.rotation.y = ry; scene.add(m); return m; }
+  function mesh(geo, mat, x, y, z, ry) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (ry) m.rotation.y = ry; m.receiveShadow = true; m.castShadow = true; scene.add(m); return m; }
   function box(sx, sy, sz, mat, x, y, z, ry) { const m = mesh(unit, mat, x, y, z, ry); m.scale.set(sx, sy, sz); return m; }
   function frame(x, z, ry) { const c = Math.cos(ry), s = Math.sin(ry); return { x, z, ry, w: (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c] }; }
   const faceCenter = (x, z) => Math.atan2(-x, -z);
@@ -70,8 +73,25 @@ function buildCity(THREE, scene, renderer, OPT) {
       m.setMatrixAt(i, tmp.matrix); if (it[7] != null) { col.set(it[7]); m.setColorAt(i, col); hc = true; }
     }
     m.instanceMatrix.needsUpdate = true; if (hc && m.instanceColor) m.instanceColor.needsUpdate = true;
-    m.frustumCulled = false; scene.add(m); return m;
+    m.frustumCulled = false; m.castShadow = this.noCast ? false : true; m.receiveShadow = true; scene.add(m);
+    if (this.ol) addOutlineTo(m, this.ol);
+    return m;
   };
+
+  /* 먹선 외곽선: 뒷면을 살짝 키워서 그려요 */
+  const olCache = {};
+  function olMat(w) {
+    if (olCache[w]) return olCache[w];
+    const m = new THREE.MeshBasicMaterial({ color: '#39283f', side: THREE.BackSide, fog: true });
+    m.onBeforeCompile = function (sh) { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed=position+normalize(normal)*' + w.toFixed(4) + ';'); };
+    m.customProgramCacheKey = function () { return 'ol' + w; };
+    return (olCache[w] = m);
+  }
+  function addOutlineTo(m, w) {
+    const o = new THREE.InstancedMesh(m.geometry, olMat(w), m.count);
+    o.instanceMatrix = m.instanceMatrix; o.count = m.count; o.frustumCulled = false; o.castShadow = false; o.receiveShadow = false; o.renderOrder = -1;
+    scene.add(o); return o;
+  }
 
   /* 부드러운 원형 글로우 / 그림자 텍스처 */
   const glowTex = ctex(64, 64, (g, w, h) => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); });
@@ -183,15 +203,19 @@ function buildCity(THREE, scene, renderer, OPT) {
   const cardJit = () => { const c = new THREE.Color(['#ffffff', '#f4ffe8', '#eaf8f0', '#fff8e2'][Math.floor(rnd() * 4)]); return c.multiplyScalar(0.86 + rnd() * 0.14); };
 
   const shadowBlobs = [], shadowRects = [], glowPts = [];
-  function shadow(x, z, sx, sz, ry, a) { shadowBlobs.push([x, z, sx, sz, ry || 0, a == null ? 1 : a]); }
+  function shadow(x, z, sx, sz, ry, a) { shadowBlobs.push([x, z, sx, sz, ry || 0, (a == null ? 1 : a) * 0.45]); }
   function shadowRect(x, z, sx, sz, ry) { shadowRects.push([x, z, sx, sz, ry || 0]); }
   function glow(x, y, z) { glowPts.push(x, y, z); }
 
   /* ═════════ 하늘 · 안개 · 빛 ═════════ */
   scene.background = new THREE.Color(FOG);
-  scene.fog = new THREE.Fog(FOG, 70, 340);
+  scene.fog = new THREE.Fog(FOG, 55, 300);
   const hemiL = new THREE.HemisphereLight('#d8ecff', '#a8b47c', 0.56); scene.add(hemiL);
-  const sunL = new THREE.DirectionalLight('#fff0cf', 0.62); sunL.position.copy(sunDir).multiplyScalar(120); scene.add(sunL);
+  const sunL = new THREE.DirectionalLight('#fff0cf', 0.62); sunL.position.copy(sunDir).multiplyScalar(120); scene.add(sunL); scene.add(sunL.target);
+  const SHR = (OPT && OPT.touch) ? 1024 : 2048;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
+  sunL.castShadow = true; sunL.shadow.mapSize.set(SHR, SHR); { const c = sunL.shadow.camera; c.left = -46; c.right = 46; c.top = 46; c.bottom = -46; c.near = 5; c.far = 260; c.updateProjectionMatrix(); }
+  sunL.shadow.bias = -0.0007; sunL.shadow.normalBias = 0.06;
 
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
@@ -237,7 +261,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     g.strokeStyle = 'rgba(150,125,100,.75)'; g.lineWidth = 4;
     for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 128, 0); g.lineTo(i * 128, h); g.stroke(); g.beginPath(); g.moveTo(0, i * 128); g.lineTo(w, i * 128); g.stroke(); }
   }, { repeat: [31, 31] });
-  const plaza = mesh(new THREE.CircleGeometry(62, 96), toonMat({ map: paverTex, color: '#dcd2c2' }), 0, 0, 0); plaza.rotation.x = -Math.PI / 2;
+  const plaza = mesh(new THREE.CircleGeometry(62, 96), toonMat({ map: paverTex, color: '#c4b59c' }), 0, 0, 0); plaza.rotation.x = -Math.PI / 2;
 
   // 손으로 그린 듯한 문양(링·방사선·대로 카펫)
   const paintTex = ctex(2048, 2048, (g, w, h) => {
@@ -260,7 +284,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   // 순환 도로 + 보도
   const asphalt = M('#6b6877');
   const roadRing = mesh(new THREE.RingGeometry(61.9, 77, 128), asphalt, 0, 0.02, 0); roadRing.rotation.x = -Math.PI / 2;
-  const walkRing = mesh(new THREE.RingGeometry(77, 85, 128), M('#d8c6ae'), 0, 0.05, 0); walkRing.rotation.x = -Math.PI / 2;
+  const walkRing = mesh(new THREE.RingGeometry(77, 85, 128), M('#c6b396'), 0, 0.05, 0); walkRing.rotation.x = -Math.PI / 2;
   const curb = new THREE.Mesh(new THREE.LatheGeometry([[60.3, 0], [60.3, 0.3], [61.7, 0.3], [61.7, 0]].map(p => new THREE.Vector2(p[0], p[1])), 128), M('#c2b19f', { side: THREE.DoubleSide })); scene.add(curb);
   // 중앙선(점선) · 횡단보도 · 대로
   { const dash = new Inst(unit, M('#f3dca2'));
@@ -370,7 +394,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   bGeo.setAttribute('aTint', new THREE.Float32BufferAttribute(bt, 3)); bGeo.setAttribute('aUV', new THREE.Float32BufferAttribute(bu, 2)); bGeo.setAttribute('aInfo', new THREE.Float32BufferAttribute(bi, 4));
   bGeo.setIndex(bx);
   const bMat = new THREE.ShaderMaterial({
-    uniforms: { uFog: { value: new THREE.Color(FOG) }, uNear: { value: 80 }, uFar: { value: 330 }, uNight: { value: NIGHT }, uSun: { value: sunDir }, uAmbTop: { value: new THREE.Color('#fbefe0') }, uAmbBot: { value: new THREE.Color('#99a0bc') }, uSunCol: { value: new THREE.Color('#ffdba3') } },
+    uniforms: { uFog: { value: new THREE.Color(FOG) }, uNear: { value: 55 }, uFar: { value: 300 }, uNight: { value: NIGHT }, uSun: { value: sunDir }, uAmbTop: { value: new THREE.Color('#fbefe0') }, uAmbBot: { value: new THREE.Color('#99a0bc') }, uSunCol: { value: new THREE.Color('#ffdba3') } },
     vertexShader: [
       'attribute vec3 aTint; attribute vec2 aUV; attribute vec4 aInfo;',
       'varying vec3 vW; varying vec3 vN; varying vec3 vT; varying vec2 vUV; varying vec4 vI;',
@@ -455,18 +479,48 @@ function buildCity(THREE, scene, renderer, OPT) {
   const drops = new THREE.Points(dropGeo, new THREE.PointsMaterial({ size: 0.34, map: glowTex, color: '#dff6ff', transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); drops.frustumCulled = false; scene.add(drops);
 
   /* ═════════ 나무 (은행나무 가을빛) ═════════ */
-  const trunkI = new Inst(new THREE.CylinderGeometry(0.2, 0.3, 1, 8), M('#7d5c47'));
-  const TREE_TEX = [crownTex(11, PAL.gA), crownTex(12, PAL.gB), crownTex(13, PAL.yA), crownTex(14, PAL.oA)];
-  const cardLists = TREE_TEX.map(() => []);
+  const trunkI = new Inst(new THREE.CylinderGeometry(0.17, 0.34, 1, 9), M('#7d5c47')); trunkI.ol = 0.025;
+  function lumpyGeo(amp, seed) {
+    const g = new THREE.SphereGeometry(1, 18, 14), r = mulberry32(seed), pos = g.attributes.position, v = new THREE.Vector3(), q = [r() * 6, r() * 6, r() * 6, r() * 6, r() * 6, r() * 6];
+    const cols = new Float32Array(pos.count * 3), lo = new THREE.Color('#b3bfd2'), hi = new THREE.Color('#ffffff'), c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const n = Math.sin(v.x * 3.3 + q[0]) * Math.sin(v.y * 2.9 + q[1]) * Math.sin(v.z * 3.1 + q[2]) + 0.5 * Math.sin(v.x * 6.1 + q[3]) * Math.sin(v.z * 5.7 + q[4]) * Math.sin(v.y * 6.3 + q[5]);
+      v.multiplyScalar(1 + n * amp); pos.setXYZ(i, v.x, v.y, v.z);
+      c.copy(lo).lerp(hi, Math.pow(Math.min(1, Math.max(0, (v.y + 1) / 2)), 0.75)); cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); g.computeVertexNormals(); return g;
+  }
+  const leafMap = pntTex(256, 256, (x, r) => {
+    x.fillStyle = '#e4e9e4'; x.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 520; i++) { const px = r() * 256, py = r() * 256, rr = 6 + r() * 13, gv = r() < 0.58 ? 255 : 186 + Math.floor(r() * 46); for (let ox = -256; ox <= 256; ox += 256) { const X = px + ox; if (X < -30 || X > 290) continue; dabE(x, X, py, rr, rr * 0.62, r() * 6.28, 'rgb(' + gv + ',' + gv + ',' + gv + ')', 0.55); } }
+  }, 71);
+  leafMap.wrapS = leafMap.wrapT = THREE.RepeatWrapping; leafMap.repeat.set(3.0, 2.2);
+  /* 잎은 햇빛이 비쳐 보이도록 그늘을 더 밝게 */
+  const gradLeaf = new THREE.DataTexture(new Uint8Array([
+    206, 212, 192, 255, 206, 212, 192, 255, 206, 212, 192, 255,
+    234, 234, 224, 255, 234, 234, 224, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]), 8, 1, THREE.RGBAFormat);
+  gradLeaf.minFilter = gradLeaf.magFilter = THREE.NearestFilter; gradLeaf.generateMipmaps = false; gradLeaf.needsUpdate = true;
+  const leafMat = toonMat({ color: '#ffffff', map: leafMap, vertexColors: true, gradientMap: gradLeaf });
+  { const ob = leafMat.onBeforeCompile; leafMat.onBeforeCompile = function (sh) { ob(sh); sh.uniforms.uTime = windU; sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed=vec3(position);\n#ifdef USE_INSTANCING\n vec2 ip=instanceMatrix[3].xz;\n#else\n vec2 ip=vec2(0.0);\n#endif\n transformed.xz+=vec2(sin(uTime*1.1+ip.x*0.3+ip.y*0.2),cos(uTime*0.9+ip.y*0.3))*0.05*(position.y+1.0);'); }; leafMat.customProgramCacheKey = () => 'leafwind'; }
+  const leafGeos = [lumpyGeo(0.16, 5), lumpyGeo(0.2, 9)];
+  const leafI = [new Inst(leafGeos[0], leafMat), new Inst(leafGeos[1], leafMat)]; 
+  const LEAFC = [['#63c052', '#80d158', '#52ad5e', '#95d860'], ['#f8d264', '#f2c04e', '#ffe492'], ['#f5a055', '#ea8b4c', '#ffbd7c']];
+  const branchI = new Inst(new THREE.CylinderGeometry(0.5, 1, 1, 6), M('#7d5c47'));
+  const treeTufts = [];
   function tree(x, z, s) {
     s = s || 1; trunkI.add(x, 1.3 * s, z, 0, s, 2.6 * s, s);
-    const q = rnd(), ti = q < 0.30 ? 0 : q < 0.58 ? 1 : q < 0.86 ? 2 : 3, L = cardLists[ti];
-    L.push({ x, y: 4.7 * s, z, w: 8.2 * s, h: 7.6 * s, c: cardJit() });
-    L.push({ x: x + R(-1.1, 1.1) * s, y: 3.7 * s, z: z + R(-1.1, 1.1) * s, w: 5.6 * s, h: 5.0 * s, c: cardJit() });
-    L.push({ x: x + R(-1.0, 1.0) * s, y: 5.7 * s, z: z + R(-1.0, 1.0) * s, w: 5.2 * s, h: 4.8 * s, c: cardJit() });
+    const q = rnd(), pal = LEAFC[q < 0.80 ? 0 : q < 0.93 ? 1 : 2], pc = () => pal[Math.floor(rnd() * pal.length)], ry0 = R(0, 6.28);
+    const blob = (dx, dy, dz, rr, sy) => leafI[Math.floor(rnd() * 2)].add(x + dx * s, dy * s, z + dz * s, R(0, 6.28), rr * s, rr * (sy || 0.88) * s, rr * s, pc(), R(-0.15, 0.15));
+    blob(0, 4.2, 0, 2.4);
+    for (let k = 0; k < 5; k++) { const a = ry0 + k / 5 * 6.283 + R(-0.2, 0.2), d = R(1.3, 1.8); blob(Math.cos(a) * d, R(3.5, 4.3), Math.sin(a) * d, R(1.45, 1.9)); }
+    blob(R(-0.8, 0.8), 3.0, R(-0.8, 0.8), 2.0, 0.7);
+    for (let k = 0; k < 2; k++) { const a = ry0 + k * 3.1 + 0.7; branchI.add(x + Math.cos(a) * 0.45 * s, 2.7 * s, z + Math.sin(a) * 0.45 * s, 0, 0.16 * s, 1.5 * s, 0.16 * s, null, Math.cos(a) * 0.5); }
     city.trees.push([x, z, s]);
-    addCircle(x, z, 0.5); shadow(x + 0.8, z + 0.8, 7 * s, 6 * s, 0, 0.5);
+    addCircle(x, z, 0.5);
     const pl = mesh(unit, M('#b8a58f'), x, 0.18, z); pl.scale.set(1.5 * s, 0.36, 1.5 * s);
+    for (let k = 0; k < 7; k++) { const a = R(0, TAU), d = R(0.45, 0.78) * s, w = R(0.5, 0.95) * s; treeTufts.push({ x: x + Math.cos(a) * d, y: 0.36 + w * 0.4, z: z + Math.sin(a) * d, w, h: w * 0.9, c: cardJit() }); }
   }
   // 분수 둘레
   for (let k = 0; k < 8; k++) { const [x, z] = P(k * 45, 25); tree(x, z, 1.05); }
@@ -478,7 +532,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   function glowS(x, y, z) { glowSmall.push(x, y, z); }
   const FONT = '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif';
   function put(m, f, lx, ly, lz, rx) { const wp = f.w(lx, lz); m.position.set(wp[0], ly, wp[1]); m.rotation.order = 'YXZ'; m.rotation.set(rx || 0, f.ry, 0); return m; }
-  function pbox(f, sx, sy, sz, mat, lx, ly, lz, rx) { const m = new THREE.Mesh(unit, mat); m.scale.set(sx, sy, sz); put(m, f, lx, ly, lz, rx); scene.add(m); return m; }
+  function pbox(f, sx, sy, sz, mat, lx, ly, lz, rx) { const m = new THREE.Mesh(unit, mat); m.scale.set(sx, sy, sz); put(m, f, lx, ly, lz, rx); m.receiveShadow = true; m.castShadow = true; scene.add(m); return m; }
   function pplane(f, w, h, mat, lx, ly, lz) { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); put(m, f, lx, ly, lz); scene.add(m); return m; }
   function textBoard(w, h, bg, fg, text, size, extra) {
     return ctex(w, h, (g, W, H) => {
@@ -501,10 +555,12 @@ function buildCity(THREE, scene, renderer, OPT) {
     shadow(x, z, 4.2, 2.2, ry, 0.5);
   }
   const bolI = new Inst(cyl8, M('#8d8398')), bolCap = new Inst(new THREE.SphereGeometry(1, 8, 6), M('#e9d9b8'));
+  bolI.ol = 0.09;
   for (let i = 0; i < 112; i++) { const deg = i * (360 / 112); if (avDist(deg) < 7.5) continue; const [x, z] = P(deg, 60.95); bolI.add(x, 0.45, z, 0, 0.13, 0.9, 0.13); bolCap.add(x, 0.93, z, 0, 0.14, 0.1, 0.14); }
 
   /* ═════════ 벤치 ═════════ */
   const benchSeat = new Inst(unit, M('#ffffff')), benchBack = new Inst(unit, M('#ffffff')), benchLeg = new Inst(unit, M('#3f3b4d'));
+  benchSeat.ol = benchBack.ol = 0.035;
   function bench(x, z, ry, record) {
     ry = ry == null ? faceCenter(x, z) : ry; const f = frame(x, z, ry), wood = rnd() < 0.5 ? '#c68b56' : '#b97e4d';
     benchSeat.add(x, 0.5, z, ry, 2.2, 0.09, 0.56, wood);
@@ -681,16 +737,20 @@ function buildCity(THREE, scene, renderer, OPT) {
   const NCAR = CARS.N;
   const wheelGeo = new THREE.CylinderGeometry(1, 1, 1, 14); wheelGeo.rotateZ(Math.PI / 2);
   const carParts = [];   // {m, list:[[lx,ly,lz,sx,sy,sz]]}
-  function part(geo, mat, list, tinted) { const m = new THREE.InstancedMesh(geo, mat, NCAR * list.length); m.frustumCulled = false; scene.add(m); const o = { m, list, tinted }; carParts.push(o); return o; }
-  const pal = ['#e8564a', '#f2c14a', '#4a8fc5', '#f5efe6', '#8b7bc0', '#6fbf8c', '#e58fb8', '#ee9a4a'], tc = new THREE.Color();
+  function part(geo, mat, list, tinted, ol) {
+    const m = new THREE.InstancedMesh(geo, mat, NCAR * list.length); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    if (ol !== 0) addOutlineTo(m, ol || 0.03);
+    const o = { m, list, tinted }; carParts.push(o); return o;
+  }
+  const pal = CARS.COLORS, tc = new THREE.Color(), carState = [], lastCol = [];
   const bodyPart = part(unit, M('#ffffff'), [[0, 0.36, 0, 1.9, 0.42, 4.2], [0, 0.5, 1.4, 1.7, 0.5, 1.3], [0, 0.5, -1.6, 1.7, 0.5, 0.8]], true);
   part(unit, M('#8a5a44'), [[-0.5, 0.57, -0.15, 0.8, 0.1, 0.75], [0.5, 0.57, -0.15, 0.8, 0.1, 0.75], [-0.5, 0.9, -0.62, 0.8, 0.55, 0.12], [0.5, 0.9, -0.62, 0.8, 0.55, 0.12]]);
   part(unit, M('#f6ecd8'), [[-0.93, 0.74, -0.15, 0.1, 0.42, 1.9], [0.93, 0.74, -0.15, 0.1, 0.42, 1.9], [-0.82, 1.05, 0.82, 0.06, 0.75, 0.06], [0.82, 1.05, 0.82, 0.06, 0.75, 0.06], [0, 1.42, 0.82, 1.7, 0.06, 0.06]]);
-  part(unit, new THREE.MeshBasicMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.32, depthWrite: false }), [[0, 1.05, 0.82, 1.64, 0.7, 0.03]]);
+  part(unit, new THREE.MeshBasicMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.32, depthWrite: false }), [[0, 1.05, 0.82, 1.64, 0.7, 0.03]], false, 0);
   part(wheelGeo, M('#2f2c38'), [[-0.98, 0.4, 1.35, 0.26, 0.4, 0.4], [0.98, 0.4, 1.35, 0.26, 0.4, 0.4], [-0.98, 0.4, -1.35, 0.26, 0.4, 0.4], [0.98, 0.4, -1.35, 0.26, 0.4, 0.4]]);
   part(wheelGeo, M('#f3e6c8'), [[-1.0, 0.4, 1.35, 0.28, 0.2, 0.2], [1.0, 0.4, 1.35, 0.28, 0.2, 0.2], [-1.0, 0.4, -1.35, 0.28, 0.2, 0.2], [1.0, 0.4, -1.35, 0.28, 0.2, 0.2]]);
-  part(unit, new THREE.MeshBasicMaterial({ color: '#fff3c8' }), [[-0.55, 0.62, 2.08, 0.34, 0.2, 0.08], [0.55, 0.62, 2.08, 0.34, 0.2, 0.08]]);
-  part(unit, new THREE.MeshBasicMaterial({ color: '#ff5a46' }), [[-0.6, 0.62, -2.04, 0.3, 0.14, 0.08], [0.6, 0.62, -2.04, 0.3, 0.14, 0.08]]);
+  part(unit, new THREE.MeshBasicMaterial({ color: '#fff3c8' }), [[-0.55, 0.62, 2.08, 0.34, 0.2, 0.08], [0.55, 0.62, 2.08, 0.34, 0.2, 0.08]], false, 0);
+  part(unit, new THREE.MeshBasicMaterial({ color: '#ff5a46' }), [[-0.6, 0.62, -2.04, 0.3, 0.14, 0.08], [0.6, 0.62, -2.04, 0.3, 0.14, 0.08]], false, 0);
   for (let i = 0; i < NCAR; i++) { tc.set(pal[i % pal.length]); const L = bodyPart.list.length; for (let k = 0; k < L; k++) bodyPart.m.setColorAt(i * L + k, tc); }
   function placeLocal(m, idx, x, z, ry, l) { const c = Math.cos(ry), sn = Math.sin(ry); tmp.position.set(x + l[0] * c + l[2] * sn, l[1], z - l[0] * sn + l[2] * c); tmp.rotation.set(0, ry, 0, 'YXZ'); tmp.scale.set(l[3], l[4], l[5]); tmp.updateMatrix(); m.setMatrixAt(idx, tmp.matrix); }
 
@@ -710,8 +770,8 @@ function buildCity(THREE, scene, renderer, OPT) {
   function onLawn(rMin, rMax, n, cb) { for (let k = 0; k < n; k++) { const a = lawnArcs[Math.floor(rnd() * lawnArcs.length)]; const deg = R(a[0] + 0.8, a[1] - 0.8), r = R(rMin, rMax); const [x, z] = P(deg, r); if (city.trees.some(t => Math.hypot(x - t[0], z - t[1]) < 1.1)) continue; cb(x, z); } }
   onLawn(54.2, 59.4, 520, (x, z) => { const w = R(0.9, 1.7); tufts.push({ x, y: w * 0.42, z, w, h: w * 0.85, c: cardJit() }); });
   onLawn(54.4, 59.2, 150, (x, z) => { const w = R(0.5, 0.8); flowers.push({ x, y: w * 0.9, z, w, h: w * 1.8, c: new THREE.Color(['#ffffff', '#ffd9e6', '#fff1b8', '#d8e6ff'][Math.floor(rnd() * 4)]) }); });
-  cardSet(tuftTex(41), tufts, { sway: 0.06 }); cardSet(flowerTex(51), flowers, { sway: 0.07 });
-  TREE_TEX.forEach((t, i) => cardSet(t, cardLists[i], { sway: 0.03 }));
+  cardSet(tuftTex(41), tufts, { sway: 0.06 }); cardSet(tuftTex(42), treeTufts, { sway: 0.07 }); cardSet(flowerTex(51), flowers, { sway: 0.07 });
+  leafI.forEach(i => i.build()); branchI.build();
   [trunkI, planterI, bushI, flowerI, bolI, bolCap, benchSeat, benchBack, benchLeg, poleI, lampBase, headI].forEach(i => i.build());
   { const pg = new THREE.PlaneGeometry(1, 1); pg.rotateX(-Math.PI / 2);
     const bm = new THREE.InstancedMesh(pg, new THREE.MeshBasicMaterial({ map: blobTex, color: '#241838', transparent: true, opacity: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), shadowBlobs.length);
@@ -754,6 +814,43 @@ function buildCity(THREE, scene, renderer, OPT) {
     return false;
   };
   const tmpCol = new THREE.Color();
+  /* 헤드라이트 빛줄기 · 먼지 · 쓰레기통 */
+  let curNight = 0.1;
+  const POLLEN = new THREE.Color('#fff2c8'), FIRE = new THREE.Color('#ffd86a');
+  const beams = [];
+  for (let i = 0; i < NCAR; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 8), new THREE.MeshBasicMaterial({ map: glowTex, color: '#fff2c0', transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending })); m.rotation.x = -Math.PI / 2; m.visible = false; m.frustumCulled = false; m.renderOrder = 3; scene.add(m); beams.push(m); }
+  function placeBeam(m, x, z, ry) { m.position.set(x + Math.sin(ry) * 6.4, 0.09, z + Math.cos(ry) * 6.4); m.rotation.order = 'YXZ'; m.rotation.set(-Math.PI / 2, ry, 0); }
+  const puffs = []; for (let i = 0; i < 28; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#efe8dc', transparent: true, depthWrite: false, opacity: 0 })); sp.visible = false; scene.add(sp); puffs.push({ s: sp, life: 0, max: 1 }); }
+  let puffI = 0;
+  city.puff = function (x, y, z) { const q = puffs[puffI++ % puffs.length]; q.life = q.max = 0.8; q.s.position.set(x, y + 0.2, z); };
+  CARS.SPAWNS.forEach((c, i) => { carState[i] = { rx: c.x, rz: c.z, rry: c.ry, color: c.color, lights: 0 }; });
+  city.setCars = function (list) { for (let i = 0; i < NCAR; i++) carState[i] = list[i]; };
+  CARS.BINS.forEach(b => {
+    const bn = mesh(cyl8, M('#4d8a72'), b[0], 0.52, b[1]); bn.scale.set(0.42, 1.04, 0.42);
+    const lid = mesh(cyl8, M('#3c6b58'), b[0], 1.08, b[1]); lid.scale.set(0.5, 0.1, 0.5);
+    const knob = mesh(new THREE.SphereGeometry(1, 8, 6), M('#e9d9b8'), b[0], 1.18, b[1]); knob.scale.set(0.1, 0.07, 0.1);
+    const band = mesh(cyl8, M('#f1e6c8'), b[0], 0.7, b[1]); band.scale.set(0.435, 0.16, 0.435);
+    addCircle(b[0], b[1], 0.5);
+  });
+  /* 공중에 떠다니는 빛가루 (밤에는 반딧불) */
+  const NMOTE = 170, motePos = new Float32Array(NMOTE * 3), moteD = [];
+  for (let i = 0; i < NMOTE; i++) { const a = R(0, TAU), r = Math.sqrt(rnd()) * 56; moteD.push({ a, r, y: R(0.6, 9), ph: R(0, TAU), sp: R(0.1, 0.4), bob: R(0.3, 1.0) }); }
+  const moteGeo = new THREE.BufferGeometry(); moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+  const moteMat = new THREE.PointsMaterial({ size: 0.26, map: glowTex, color: '#fff2c8', transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+  const motes = new THREE.Points(moteGeo, moteMat); motes.frustumCulled = false; scene.add(motes);
+
+  /* 하늘을 도는 새떼 */
+  const birdTex = pntTex(64, 64, (x) => {
+    x.strokeStyle = '#2f2a3a'; x.lineWidth = 7; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(8, 36); x.quadraticCurveTo(22, 18, 32, 34); x.quadraticCurveTo(42, 18, 56, 36); x.stroke();
+  }, 3);
+  const birds = [];
+  for (let i = 0; i < 9; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: birdTex, transparent: true, depthWrite: false, fog: false, opacity: 0.55 }));
+    const g = Math.floor(i / 3); sp.scale.setScalar(R(5, 8)); sp.frustumCulled = false; scene.add(sp);
+    birds.push({ s: sp, g, a: R(0, TAU), r: R(120, 230), y: R(55, 105), v: R(0.012, 0.025), ph: R(0, TAU) });
+  }
+
   city.update = function (dt, T, camPos, carT) {
     windU.value = T; sky.position.copy(camPos); clouds.rotation.y += dt * 0.0022;
     waterMat.uniforms.uT.value = T; sheetMat.uniforms.uT.value = T;
@@ -763,11 +860,31 @@ function buildCity(THREE, scene, renderer, OPT) {
       dropPos[i * 3] = Math.cos(d.a) * d.vh * t; dropPos[i * 3 + 1] = y; dropPos[i * 3 + 2] = Math.sin(d.a) * d.vh * t;
     }
     dropGeo.attributes.position.needsUpdate = true;
-    for (let i = 0; i < NCAR; i++) {
-      const p = CARS.pos(i, carT || 0), x = p[0], z = p[1], ry = p[2], tx = Math.sin(ry), tz = Math.cos(ry);
-      carParts.forEach(o => { const L = o.list.length; for (let k = 0; k < L; k++) placeLocal(o.m, i * L + k, x, z, ry, o.list[k]); });
+    for (let i = 0; i < NMOTE; i++) {
+      const d = moteD[i]; d.a += d.sp * 0.02 * dt;
+      motePos[i * 3] = Math.cos(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
+      motePos[i * 3 + 1] = d.y + Math.sin(T * d.bob + d.ph) * 0.5;
+      motePos[i * 3 + 2] = Math.sin(d.a + Math.sin(T * 0.12 + d.ph) * 0.05) * d.r;
     }
-    carParts.forEach(o => { o.m.instanceMatrix.needsUpdate = true; }); if (bodyPart.m.instanceColor) bodyPart.m.instanceColor.needsUpdate = true;
+    moteGeo.attributes.position.needsUpdate = true;
+    moteMat.color.copy(curNight > 0.5 ? FIRE : POLLEN); moteMat.opacity = 0.28 + 0.52 * curNight; moteMat.size = 0.22 + 0.16 * curNight;
+    for (const b of birds) {
+      b.a += b.v * dt; const wob = Math.sin(T * 0.5 + b.ph) * 6;
+      b.s.position.set(Math.cos(b.a) * b.r, b.y + wob, Math.sin(b.a) * b.r);
+      b.s.material.opacity = 0.5 * (1 - curNight * 0.85);
+      b.s.visible = curNight < 0.85;
+    }
+    let colDirty = false;
+    for (let i = 0; i < NCAR; i++) {
+      const c = carState[i]; if (!c) continue;
+      const x = c.rx, z = c.rz, ry = c.rry;
+      carParts.forEach(o => { const L = o.list.length; for (let k = 0; k < L; k++) placeLocal(o.m, i * L + k, x, z, ry, o.list[k]); });
+      if (lastCol[i] !== c.color) { lastCol[i] = c.color; tc.set(pal[c.color % pal.length]); const L = bodyPart.list.length; for (let k = 0; k < L; k++) bodyPart.m.setColorAt(i * L + k, tc); colDirty = true; }
+      const bm = beams[i], on = c.lights ? 1 : 0, nightK = 0.25 + 0.75 * (curNight || 0);
+      bm.visible = !!on; if (on) { const f = placeBeam(bm, x, z, ry); bm.material.opacity = 0.42 * nightK; }
+    }
+    carParts.forEach(o => { o.m.instanceMatrix.needsUpdate = true; }); if (colDirty && bodyPart.m.instanceColor) bodyPart.m.instanceColor.needsUpdate = true;
+    for (const q of puffs) { if (q.life <= 0) { q.s.visible = false; continue; } q.life -= dt; q.s.visible = true; const k = 1 - q.life / q.max; q.s.position.y += dt * 0.5; q.s.scale.setScalar(0.8 + k * 2.4); q.s.material.opacity = 0.5 * (1 - k); }
     for (let i = 0; i < NLEAF; i++) {
       const d = leafD[i]; let y = leafPos[i * 3 + 1] - d.vy * dt;
       leafPos[i * 3] += (Math.sin(T * 0.6 + d.ph) * d.sw + 0.35) * dt; leafPos[i * 3 + 2] += Math.cos(T * 0.5 + d.ph) * d.sw * 0.6 * dt;
@@ -777,8 +894,15 @@ function buildCity(THREE, scene, renderer, OPT) {
     leafGeo.attributes.position.needsUpdate = true;
   };
   city.sunDir = sunDir;
+  const outMat = new THREE.MeshBasicMaterial({ color: '#3b2a3e', side: THREE.BackSide });
+  outMat.onBeforeCompile = function (sh) { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed=position+normalize(normal)*0.022;'); };
+  city.outline = function (m) { const o = new THREE.Mesh(m.geometry, outMat); o.castShadow = false; o.receiveShadow = false; m.add(o); return o; };
   city.toon = toonMat;
-  city.setPlayer = function (x, y, z) { playerU.value.set(x, y, z, 0.8); };
+  city.setPlayer = function (x, y, z) {
+    playerU.value.set(x, y, z, 0.8);
+    sunL.target.position.set(Math.round(x / 2) * 2, 0, Math.round(z / 2) * 2); sunL.target.updateMatrixWorld();
+    sunL.position.copy(sunL.target.position).addScaledVector(sunDir, 120);
+  };
 
   /* 후처리: 부드러운 번짐 + 블룸 + 색보정 + 종이결 + 햇살 */
   const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), postScene = new THREE.Scene();
@@ -806,8 +930,8 @@ function buildCity(THREE, scene, renderer, OPT) {
       '  c+=acc/16.0*uSunAmt*vec3(1.0,0.86,0.6)*1.25;',
       ' }',
       ' float l=dot(c,vec3(0.299,0.587,0.114));',
-      ' c=mix(vec3(l),c,1.14); c=mix(c,c*c*(3.0-2.0*c),0.14);',
-      ' c*=mix(vec3(0.90,0.96,1.10),vec3(1.06,1.03,0.94),smoothstep(0.12,0.7,l));',
+      ' c=mix(vec3(l),c,1.24); c=mix(c,c*c*(3.0-2.0*c),0.20);',
+      ' c*=mix(vec3(0.88,0.95,1.12),vec3(1.08,1.04,0.93),smoothstep(0.10,0.72,l));',
       ' c+=(1.0-smoothstep(0.0,0.45,l))*vec3(0.012,0.016,0.03);',
       ' float paper=vn(vUv*uRes*0.5)*0.5+vn(vUv*uRes*0.13)*0.5; c*=1.0-0.026*(1.0-paper);',
       ' vec2 vq=vUv-0.5; c*=1.0-0.30*smoothstep(0.35,0.95,length(vq*vec2(1.0,0.9)));',
@@ -819,7 +943,8 @@ function buildCity(THREE, scene, renderer, OPT) {
   let rt = null, ms = (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget);
   function resizePost() {
     const v = new THREE.Vector2(); renderer.getDrawingBufferSize(v);
-    const w = Math.max(2, Math.floor(v.x)), h = Math.max(2, Math.floor(v.y));
+    const q = (OPT && OPT.touch) ? 0.82 : 1;
+    const w = Math.max(2, Math.floor(v.x * q)), h = Math.max(2, Math.floor(v.y * q));
     if (rt) rt.dispose();
     const o = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
     if (ms) { rt = new THREE.WebGLMultisampleRenderTarget(w, h, o); rt.samples = (OPT && OPT.touch) ? 2 : 4; } else rt = new THREE.WebGLRenderTarget(w, h, o);
@@ -860,21 +985,23 @@ function buildCity(THREE, scene, renderer, OPT) {
     const u = Math.min(1, Math.max(0, (h - 5.5) / 14)), el = Math.pow(Math.sin(u * Math.PI), 0.9) * 0.55 + 0.05, az = (330 - 150 * u) * D2R, ce = Math.sqrt(1 - el * el);
     dayDir.set(Math.cos(az) * ce, el, Math.sin(az) * ce);
     sunDir.copy(moonDir).lerp(dayDir, dayW).normalize();
-    sunL.position.copy(sunDir).multiplyScalar(120); sunL.color.copy(CUR.sC); sunL.intensity = sI;
+    sunL.position.copy(sunL.target.position).addScaledVector(sunDir, 120); sunL.color.copy(CUR.sC); sunL.intensity = sI;
     hemiL.color.copy(CUR.hS); hemiL.groundColor.copy(CUR.hG); hemiL.intensity = hI;
     scene.fog.color.copy(CUR.hor).lerp(CUR.mid, 0.12 * (1 - night)); scene.background.copy(scene.fog.color);
     const su = skyMat.uniforms; su.uTop.value.copy(CUR.top); su.uMid.value.copy(CUR.mid); su.uHor.value.copy(scene.fog.color); su.uSunCol.value.copy(CUR.sC); su.uNight.value = night;
     const bu = bMat.uniforms; bu.uFog.value.copy(scene.fog.color); bu.uNight.value = night * 0.95 + 0.05;
     bu.uAmbTop.value.copy(CUR.hS).multiplyScalar(hI * 1.7); bu.uAmbBot.value.copy(CUR.hG).lerp(CUR.hS, 0.35).multiplyScalar(hI * 1.5); bu.uSunCol.value.copy(CUR.sC).multiplyScalar(sI * 0.95);
-    cardTint.value.setRGB(CUR.tint[0], CUR.tint[1], CUR.tint[2]); rimU.value.copy(CUR.rim); rimK.value = 0.26 - 0.1 * night;
+    cardTint.value.setRGB(CUR.tint[0], CUR.tint[1], CUR.tint[2]); rimU.value.copy(CUR.rim); rimK.value = 0.34 - 0.12 * night;
     clouds.children.forEach(c => { c.material.color.copy(CUR.cl); c.material.opacity = (c.userData.op || 0.9) * (1 - 0.45 * night); });
-    glowMats.forEach(g => { g[0].opacity = g[1] * (1 + 1.9 * night * night); g[0].size = g[2] * (1 + 0.5 * night); });
-    postMat.uniforms.uBloom.value = bloom; city.sunAmt = (1 - night) * dayW;
+    glowMats.forEach(g => { g[0].opacity = g[1] * (0.1 + 2.3 * night * night); g[0].size = g[2] * (0.75 + 0.6 * night); });
+    postMat.uniforms.uBloom.value = bloom; city.sunAmt = (1 - night) * dayW; curNight = night;
   };
   city.setTime(16.5);
   city.resize = resizePost;
   let usePost = !/nopost/.test(location.search); city.setPost = function (v) { usePost = v; };
+  let shFrame = 0;
   city.render = function (cam) {
+    renderer.shadowMap.needsUpdate = (shFrame++ % 2) === 0;
     if (!usePost) { renderer.render(scene, cam); return; }
     sunV.copy(sunDir).multiplyScalar(300).add(cam.position).project(cam);
     const vis = sunV.z < 1 ? 1 : 0, ex = Math.max(Math.abs(sunV.x), Math.abs(sunV.y));
