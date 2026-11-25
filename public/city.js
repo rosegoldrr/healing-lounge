@@ -929,10 +929,10 @@ function buildCity(THREE, scene, renderer, OPT) {
   });
   postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat));
   clouds.children.forEach(c => { c.userData.op = c.material.opacity; });
-  let rt = null, ms = (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget);
+  let qScale = 1, rt = null, ms = (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget);
   function resizePost() {
     const v = new THREE.Vector2(); renderer.getDrawingBufferSize(v);
-    const q = (OPT && OPT.touch) ? 0.82 : 1;
+    const q = qScale;
     const w = Math.max(2, Math.floor(v.x * q)), h = Math.max(2, Math.floor(v.y * q));
     if (rt) rt.dispose();
     const o = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
@@ -987,6 +987,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   };
   city.setTime(16.5);
   city.resize = resizePost;
+  city.setScale = function (v) { qScale = v; resizePost(); };
   let usePost = !/nopost/.test(location.search); city.setPost = function (v) { usePost = v; };
   let shFrame = 0;
   city.render = function (cam) {
