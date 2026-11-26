@@ -139,5 +139,19 @@ window.ENG = (function () {
     const N = E.nodes; for (const k in N) { try { if (N[k].stop) N[k].stop(); } catch (_) { } }
     try { E.out.disconnect(); } catch (_) { }
   }
-  return { create, update, destroy, types: T };
+  /* 드래곤 울부짖음 */
+  function roar(c, dest, vol) {
+    const t = c.currentTime, o = [c.createOscillator(), c.createOscillator()], g = c.createGain(), lp = c.createBiquadFilter(), lfo = c.createOscillator(), lg = c.createGain();
+    o[0].type = 'sawtooth'; o[1].type = 'square';
+    o[0].frequency.setValueAtTime(95, t); o[0].frequency.exponentialRampToValueAtTime(190, t + 0.35); o[0].frequency.exponentialRampToValueAtTime(55, t + 1.8);
+    o[1].frequency.setValueAtTime(48, t); o[1].frequency.exponentialRampToValueAtTime(95, t + 0.35); o[1].frequency.exponentialRampToValueAtTime(28, t + 1.8);
+    lfo.frequency.value = 17; lg.gain.value = 9; lfo.connect(lg); lg.connect(o[0].frequency);
+    lp.type = 'lowpass'; lp.Q.value = 3; lp.frequency.setValueAtTime(500, t); lp.frequency.exponentialRampToValueAtTime(1700, t + 0.4); lp.frequency.exponentialRampToValueAtTime(260, t + 1.8);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7 * vol, t + 0.12); g.gain.setValueAtTime(0.7 * vol, t + 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.9);
+    const nz = c.createBufferSource(); nz.buffer = noise(c); nz.loop = true; const nb = c.createBiquadFilter(); nb.type = 'bandpass'; nb.frequency.setValueAtTime(700, t); nb.frequency.exponentialRampToValueAtTime(300, t + 1.8); nb.Q.value = 0.9;
+    const ng = c.createGain(); ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(0.35 * vol, t + 0.15); ng.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    o.forEach(x => { x.connect(lp); x.start(t); x.stop(t + 2); }); lfo.start(t); lfo.stop(t + 2);
+    lp.connect(g); g.connect(dest); nz.connect(nb); nb.connect(ng); ng.connect(dest); nz.start(t); nz.stop(t + 2);
+  }
+  return { create, update, destroy, roar, types: T };
 })();

@@ -394,11 +394,11 @@ const wheelMatT=new THREE.MeshToonMaterial({color:'#2a2a30'});
 function rideWheel(a,U,vi,steer){
   if(!vi||vi.k==='dragon'){if(U.wheel)U.wheel.visible=false;return;}
   if(!U.wheel||U.wheelK!==vi.k){if(U.wheel)a.remove(U.wheel);const g=new THREE.Group(),inner=new THREE.Group();g.add(inner);
-    if(vi.k==='bike'){const b=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.78,8),wheelMatT);b.rotation.z=Math.PI/2;inner.add(b);}
+    if(vi.k==='bike'){}
     else{const t=new THREE.Mesh(new THREE.TorusGeometry(0.2,0.032,8,18),wheelMatT);inner.add(t);const sp=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.03,0.03),wheelMatT);inner.add(sp);}
     g.userData.inner=inner;a.add(g);U.wheel=g;U.wheelK=vi.k;}
   const w=U.wheel,rs=vi.rs;w.visible=true;
-  if(vi.k==='bike'){w.position.set(0,0.74*rs+0.1,0.55*rs+0.12);w.userData.inner.rotation.set(0,steer*-0.5,0);}
+  if(vi.k==='bike'){w.visible=false;}
   else{w.position.set(0,0.78*rs+0.12,0.5*rs+0.3);w.rotation.set(-1.0,0,0);w.userData.inner.rotation.z=steer*-1.6;w.scale.setScalar(0.45+0.55*rs);}
 }
 function animateAvatar(a,mv,dt,t,st,y){
@@ -414,10 +414,11 @@ function animateAvatar(a,mv,dt,t,st,y){
   if(U.pm)T.lab=U.pm.top+0.32-(st===ST.SIT||st===ST.RIDE?0.55:st===ST.LIE?1.3:0);
   const rv=st===ST.RIDE&&U.rv?U.rv:null,vi=rv?CARS.vinfo(rv.id):null,rsT=vi?vi.rs:1,drvSeat=!!(rv&&rv.seat===0);
   if(rv){const stv=(me.g===a&&drvSeat)?drv.steer:0;T.rigY*=rsT;T.lab=T.lab*rsT+0.2;
-    if(drvSeat){T.al=-1.32-stv*0.3;T.ar=-1.32+stv*0.3;T.az=0.2;if(vi.k==='bike'){T.rotX=0.22;T.al=T.ar=-1.0;T.tl=-1.25;T.tr=-1.25;T.kl=T.kr=1.25;}}
+    if(drvSeat){T.al=-1.32-stv*0.3;T.ar=-1.32+stv*0.3;T.az=0.2;if(vi.k==='bike'){T.rotX=0.42;T.al=T.ar=-1.0;T.tl=-1.25;T.tr=-1.25;T.kl=T.kr=1.25;}}
     if(vi.k==='dragon'){T.al=T.ar=-1.0;T.az=0.12;T.rotX=0.12;}
     U.stv=stv;}
   U.rs=(U.rs||1)+(rsT-(U.rs||1))*(1-Math.exp(-14*dt));U.rig.scale.setScalar(U.rs);
+  if(U.pm){const hv=window.__hand||null;U.pm.hand=rv&&drvSeat&&vi.k!=='dragon'?(hv||(vi.k==='bike'?{ax:'z',ul:-0.95,ur:-0.95,ll:-0.1,lr:-0.1}:{ax:'z',ul:-0.8,ur:-0.8,ll:-0.2,lr:-0.2})):null;}
   rideWheel(a,U,rv&&drvSeat?vi:null,U.stv||0);
   T.lab+=U.labLift||0;let extraY=0,rz=0;const nowMs=performance.now();
   if(U.emo){
@@ -530,7 +531,7 @@ function onMsg(m){
     else toast(m.why==='full'?'자리가 없어요':'너무 멀어요');
   }
   else if(m.t==='cfix'){drv.x=m.x;drv.z=m.z;drv.vx=drv.vz=0;}
-  else if(m.t==='fire'){const c=carsC[m.car];if(c&&m.on){c.fireUntil=performance.now()+420;const d=Math.hypot(c.rx-me.x,c.rz-me.z);if(d<80)fireSnd(c.id,Math.max(0.25,1-d/80));}}
+  else if(m.t==='fire'){const c=carsC[m.car];if(c){c.fireUntil=m.on?performance.now()+1300:0;}}
   else if(m.t==='horn'){const c=carsC[m.car];if(c){const d=Math.hypot(c.rx-me.x,c.rz-me.z);if(d<70)hornOn(m.car,Math.max(0.2,1-d/70));}}
   else if(m.t==='poop'){addPoop(m.p);}
   else if(m.t==='poopdel'){delPoop(m.pid);}
@@ -583,10 +584,12 @@ addEventListener('keydown',e=>{
   }
   keys[e.code]=true;
 });
-addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='KeyH')hornHeld=false;if(e.code==='KeyF'&&firing){firing=false;send({t:'fire',on:0});}});
-addEventListener('blur',()=>{for(const k in keys)keys[k]=false;hornHeld=false;});
+addEventListener('keyup',e=>{keys[e.code]=false;if(e.code==='KeyH')hornHeld=false;if(e.code==='KeyF'&&firing){firing=false;fireOff();}});
+function releaseAll(){for(const k in keys)keys[k]=false;hornHeld=false;touchHB=false;touchDn=false;if(joy.id!==null){joy.id=null;joy.x=joy.y=0;if(knob)knob.style.transform='';}if(firing){firing=false;fireOff();}drag=null;}
+addEventListener('blur',releaseAll);document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAll();});
+addEventListener('contextmenu',releaseAll);addEventListener('mouseup',e=>{if(e.button===2)releaseAll();});
 let yaw=0,pitch=0.35,dist=11,drag=null;
-canvas.addEventListener('pointerdown',e=>{if(!joined)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY};try{canvas.setPointerCapture(e.pointerId);}catch(_){}});
+canvas.addEventListener('pointerdown',e=>{if(!joined)return;if(e.pointerType==='mouse'&&e.button===2)for(const k in keys)keys[k]=false;drag={id:e.pointerId,x:e.clientX,y:e.clientY};try{canvas.setPointerCapture(e.pointerId);}catch(_){}});
 let lastDrag=0;
 canvas.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;lastDrag=performance.now();const s=e.pointerType==='touch'?0.0055:0.004;yaw-=(e.clientX-drag.x)*s;pitch=clamp(pitch+(e.clientY-drag.y)*s,0.05,1.3);drag.x=e.clientX;drag.y=e.clientY;});
 const endDrag=e=>{if(drag&&e.pointerId===drag.id)drag=null;};
@@ -638,7 +641,7 @@ $('#bView').addEventListener('click',()=>cycleFov());
 /* 터치 조이스틱 */
 const joy={id:null,x:0,y:0},joyEl=$('#joy'),knob=$('#knob');
 function updJoy(e){const r=joyEl.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const m=Math.hypot(dx,dy),mx=r.width/2-10;if(m>mx){dx*=mx/m;dy*=mx/m;}knob.style.transform='translate('+dx+'px,'+dy+'px)';joy.x=dx/mx;joy.y=dy/mx;}
-joyEl.addEventListener('pointerdown',e=>{joy.id=e.pointerId;try{joyEl.setPointerCapture(e.pointerId);}catch(_){}updJoy(e);e.preventDefault();});
+joyEl.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;joy.id=e.pointerId;try{joyEl.setPointerCapture(e.pointerId);}catch(_){}updJoy(e);e.preventDefault();});
 joyEl.addEventListener('pointermove',e=>{if(e.pointerId===joy.id)updJoy(e);});
 const endJoy=e=>{if(e.pointerId===joy.id){joy.id=null;joy.x=joy.y=0;knob.style.transform='';}};
 joyEl.addEventListener('pointerup',endJoy);joyEl.addEventListener('pointercancel',endJoy);
@@ -827,7 +830,7 @@ function updatePrompt(){
   if(joined){
     if(me.st===ST.SIT&&me.bench)t='[E] 일어나기';
     else if(me.st===ST.SIT&&me.tree)t='[E] 내려가기 · [Space] 뛰어내리기';
-    else if(me.st===ST.RIDE)t=me.seat===0?(CARS.vinfo(me.car).fly?'WASD 비행 · Space 상승 · C 하강 · F 불 뿜기 · Shift 가속 · E 내리기':'X 시동 · WASD 운전 · Space 핸드브레이크 · Shift 부스트 · E 내리기'):'[E] 내리기';
+    else if(me.st===ST.RIDE)t=me.seat===0?(CARS.vinfo(me.car).fly?'WASD 비행 · Space 상승 · 시선 아래+전진=하강 · F 불(누르는 동안) · H 울부짖기 · Shift 가속 · E 내리기':'X 시동 · WASD 운전 · Space 핸드브레이크 · Shift 부스트 · E 내리기'):'[E] 내리기';
     else if(me.st===ST.SIT||me.st===ST.LIE)t='';
     else{const f=findTarget();if(f){t='[E] '+f.label;hot=true;
       const a=f.type==='ani'?f.a:nearAni(3.0);if(a)t+=(a.kind==='dog'?' · [F] '+(a.owner===myId?'산책 끝내기':'산책 시작'):'')+' · [G] 간식';}
@@ -861,8 +864,10 @@ function ac(){
 function tone(f,t0,dur,type,vol){const c=Snd.ctx,o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(vol,t0+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);o.connect(g);g.connect(Snd.master);o.start(t0);o.stop(t0+dur+0.05);}
 /* 경적: 누르고 있는 동안 계속 울려요 (서버가 0.15초마다 오는 신호를 이어 받아 소리를 유지) */
 const hornV=new Map();
+let lastRoar=0;
 function hornOn(car,v){
-  const c=ac();if(!c)return;let h=hornV.get(car);const t=c.currentTime;
+  const c=ac();if(!c)return;
+  if(CARS.vinfo(car).fly){const n=performance.now();if(n-lastRoar>1700&&window.ENG){lastRoar=n;ENG.roar(c,Snd.eng||Snd.horn,Math.min(1,v));}return;}let h=hornV.get(car);const t=c.currentTime;
   if(!h){const g=c.createGain();g.gain.value=0.0001;const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2600;
     const o1=c.createOscillator(),o2=c.createOscillator();o1.type=o2.type='square';o1.frequency.value=392;o2.frequency.value=494;
     o1.connect(lp);o2.connect(lp);lp.connect(g);g.connect(Snd.horn);o1.start();o2.start();h={o1,o2,g,stop:0};hornV.set(car,h);}
@@ -905,6 +910,7 @@ function engTick(dt){
   engA.forEach((a,id)=>{if(!keep.has(id)){ENG.destroy(a.E);engA.delete(id);}});
 }
 function fireSnd(){}
+addEventListener('contextmenu',e=>{if(!/^(INPUT|TEXTAREA)$/.test(e.target.tagName))e.preventDefault();});
 let hornHeld=false;
 function sendHorn(){if(joined&&me.st===ST.RIDE&&me.seat===0){send({t:'horn'});hornOn(me.car,1);}}
 setInterval(()=>{if(hornHeld)sendHorn();},140);
@@ -951,6 +957,7 @@ function renderCars(dt){
 function initDrive(id){const c=carsC[id];drv.y=c.y||0;drv.vy=0;drv.pt=0;drv.thr=0;drv.x=c.rx;drv.z=c.rz;drv.ry=c.rry;drv.vx=Math.sin(c.rry)*c.tsp;drv.vz=Math.cos(c.rry)*c.tsp;drv.sp=c.tsp;drv.steer=0;drv.t=0;
   me.x=drv.x;me.z=drv.z;dist=Math.max(dist,CARS.vinfo(id).fly?15:8);}
 let touchHB=false,touchDn=false;
+function fireOff(){send({t:'fire',on:0});const c=carsC[me.car];if(c)c.fireUntil=0;}
 function D_hold(c){c.rx=drv.x;c.rz=drv.z;c.rry=drv.ry;}
 function exitCar(){
   const c=carsC[me.car];if(!c||me.exiting||me.ent)return;const vi=CARS.vinfo(me.car);
@@ -958,8 +965,8 @@ function exitCar(){
   if(vi.fx||vi.k!=='car'){me.exiting={t:0,car:me.car,arc:vi.k==='dragon'?0.9:0.35,door:vi.k==='car'};}else send({t:'unride'});
 }
 function toggleEngine(){const c=carsC[me.car];if(!c||me.seat!==0||me.ent||me.exiting)return;const vi=CARS.vinfo(me.car);if(vi.fly)return;c.eng=c.eng?0:1;send({t:'carset',e:c.eng});}
-function fireKey(on){if(me.st!==ST.RIDE||me.seat!==0)return;const c=carsC[me.car];if(!c||!CARS.vinfo(me.car).fly)return;firing=on;if(on){send({t:'fire',on:1});c.fireUntil=performance.now()+420;}}
-let firing=false;setInterval(()=>{if(firing)fireKey(true);},140);
+function fireKey(on){if(me.st!==ST.RIDE||me.seat!==0)return;const c=carsC[me.car];if(!c||!CARS.vinfo(me.car).fly)return;firing=on;if(on){send({t:'fire',on:1});c.fireUntil=performance.now()+1300;}else c.fireUntil=0;}
+let firing=false;setInterval(()=>{if(firing)fireKey(true);},450);
 function stepFly(dt,c){
   const D=drv;
   let thr=clamp((keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y,-1,1),sx=clamp((keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x,-1,1);
@@ -970,7 +977,8 @@ function stepFly(dt,c){
   D.sp+=(tgt-D.sp)*(1-Math.exp(-(tgt?1.6:1.1)*dt));
   D.steer+=(sx-D.steer)*(1-Math.exp(-6*dt));
   D.ry-=D.steer*(1.5)*(0.35+0.65*Math.min(1,Math.abs(D.sp)/6))*dt;
-  const vt=((up?1:0)-(dn?1:0))*(boost?16:11);
+  let vt=((up?1:0)-(dn?1:0))*(boost?16:11);
+  if(!up&&!dn&&D.sp>1.5){let pp=pitch-0.38;if(Math.abs(pp)<0.07)pp=0;else pp-=Math.sign(pp)*0.07;vt=clamp(-pp*2.4*D.sp,-D.sp*0.95,D.sp*0.7);}   // 시선을 아래로 두고 전진하면 하강, 위로 두면 상승
   D.vy+=(vt-D.vy)*(1-Math.exp(-2.4*dt));
   D.y=clamp(D.y+D.vy*dt,0,85);if(D.y<=0&&D.vy<0)D.vy=0;
   const nx=Math.sin(D.ry),nz=Math.cos(D.ry);
@@ -1016,7 +1024,7 @@ function toggleLights(){const c=carsC[me.car];if(c){send({t:'carset',l:c.lights?
 (function(){
   const pal=$('#cpal');CARS.COLORS.forEach((col,i)=>{const b=document.createElement('b');b.style.background=col;b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();send({t:'carset',c:i});const c=carsC[me.car];if(c)c.color=i;});pal.appendChild(b);});
   const T=(id,fn)=>$(id).addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();fn();});
-  T('#cLight',toggleLights);(function(){const b=$('#cHorn'),up=()=>{hornHeld=false;};b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();hornHeld=true;sendHorn();try{b.setPointerCapture(e.pointerId);}catch(_){}});b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up);})();T('#cRadio',cycleRadio);T('#cExit',exitCar);T('#cEng',toggleEngine);(function(){const b=$('#cFire'),on=e=>{e.preventDefault();e.stopPropagation();fireKey(true);try{b.setPointerCapture(e.pointerId);}catch(_){}},off=()=>{firing=false;send({t:'fire',on:0});};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);const d=$('#cDown'),dd=e=>{e.preventDefault();e.stopPropagation();touchDn=true;try{d.setPointerCapture(e.pointerId);}catch(_){}},du=()=>{touchDn=false;};d.addEventListener('pointerdown',dd);d.addEventListener('pointerup',du);d.addEventListener('pointercancel',du);d.addEventListener('lostpointercapture',du);})();
+  T('#cLight',toggleLights);(function(){const b=$('#cHorn'),up=()=>{hornHeld=false;};b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();hornHeld=true;sendHorn();try{b.setPointerCapture(e.pointerId);}catch(_){}});b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('lostpointercapture',up);})();T('#cRadio',cycleRadio);T('#cExit',exitCar);T('#cEng',toggleEngine);(function(){const b=$('#cFire'),on=e=>{e.preventDefault();e.stopPropagation();fireKey(true);try{b.setPointerCapture(e.pointerId);}catch(_){}},off=()=>{firing=false;fireOff();};b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);const d=$('#cDown'),dd=e=>{e.preventDefault();e.stopPropagation();touchDn=true;try{d.setPointerCapture(e.pointerId);}catch(_){}},du=()=>{touchDn=false;};d.addEventListener('pointerdown',dd);d.addEventListener('pointerup',du);d.addEventListener('pointercancel',du);d.addEventListener('lostpointercapture',du);})();
 })();
 let carUIstate='';
 function updateCarUI(){
@@ -1024,7 +1032,7 @@ function updateCarUI(){
   const key=riding?(drvr?'d':'p'):'n';
   if(key!==carUIstate){carUIstate=key;$('#carui').style.display=riding?'flex':'none';$('#spdo').style.display=riding?'block':'none';
     const fl=riding&&CARS.vinfo(me.car).fly;
-    $('#cpal').style.display=drvr&&!fl?'flex':'none';$('#cLight').style.display=drvr&&!fl?'flex':'none';$('#cEng').style.display=drvr&&!fl?'flex':'none';$('#cFire').style.display=drvr&&fl?'flex':'none';$('#cDown').style.display=drvr&&fl?'flex':'none';
+    $('#cpal').style.display=drvr&&!fl?'flex':'none';$('#cLight').style.display=drvr&&!fl?'flex':'none';$('#cEng').style.display=drvr&&!fl?'flex':'none';$('#cFire').style.display=drvr&&fl?'flex':'none';$('#cDown').style.display='none';$('#cHorn').innerHTML=fl?'🐲 울부짖기 <i>H</i>':'📣 경적 <i>H</i>';
     $('#cttl').textContent=fl?(drvr?'🐉 드래곤 조종':'🐉 동승 중'):drvr?'🚗 운전 중':'🚗 동승 중';
     if(!riding)setRadio(0);}
   if(c){$('#kmh').textContent=Math.round(Math.abs(c.rsp)*3.6);$('#cEng').classList.toggle('on',!!c.eng);$('#engname').textContent=c.eng?'시동 끄기':'시동 켜기';$('#cLight').classList.toggle('on',!!c.lights);

@@ -22,7 +22,7 @@
     14: { d: [0.4, 0.08, 0.26], p: [-0.4, 0.08, 0.26], rs: 0.5, sd: 1, eng: 'v12', fx: 'Countach' },
     15: { d: [0.4, 0.1, 0.26], p: [-0.4, 0.1, 0.26], rs: 0.5, sd: 1, eng: 'v12b', fx: 'Centenario' },
     16: { d: [0.4, 0.1, 0.26], p: [-0.4, 0.1, 0.26], rs: 0.5, sd: 1, eng: 'v12h', fx: 'LaFerrari' },
-    17: { k: 'dragon', d: [0, 0.3, 2.3], p: [0, -0.45, 2.25], rs: 0.5, sd: 1, eng: 'dragon', fly: 1 }
+    17: { k: 'dragon', d: [0, 0.3, 1.62], p: [0, -0.45, 1.57], rs: 0.5, sd: 1, eng: 'dragon', fly: 1 }
   };
   const vinfo = id => { const o = VINFO[id] || {}; return { k: o.k || DEF.k, d: o.d || DEF.d, p: o.p || DEF.p, rs: o.rs || DEF.rs, sd: o.sd || DEF.sd, eng: o.eng || DEF.eng, fx: o.fx || '', fly: o.fly || 0 }; };
   /* 좌석 위치: [x, z] — 차 중심에서 옆(+왼쪽)·앞뒤로 */

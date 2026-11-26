@@ -26,10 +26,10 @@ window.DRG = (function () {
     const D = { root: new THREE.Group(), ready: false, fire: 0, cur: '', fireT: 0, parts: [] };
     D.root.visible = false; scene.add(D.root);
     const tex = glowTex();
-    for (let i = 0; i < 46; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-      s.visible = false; scene.add(s); D.parts.push({ s, life: 0, max: 1, v: new THREE.Vector3() });
-    }
+    const mk = (blend, n) => { for (let i = 0; i < n; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: blend ? tex : smokeTex, transparent: true, depthWrite: false, blending: blend ? THREE.AdditiveBlending : THREE.NormalBlending, opacity: 0 }));
+      sp.visible = false; scene.add(sp); D.parts.push({ s: sp, life: 0, max: 1, v: new THREE.Vector3(), smoke: !blend, ph: Math.random() * 6.28 }); } };
+    const smokeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(70,60,55,.55)'); g.addColorStop(1, 'rgba(40,35,35,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+    mk(true, 150); mk(false, 40);
     load(() => {
       const root = cloneSkinned(gltf.scene);
       root.traverse(o => {
@@ -44,7 +44,7 @@ window.DRG = (function () {
       const holder = new THREE.Group(); holder.add(root); holder.scale.setScalar(SCALE); D.root.add(holder);
       const mixer = new THREE.AnimationMixer(root), act = {};
       gltf.animations.forEach(a => {
-        a.tracks = a.tracks.filter(t => !(/\.position$/.test(t.name) && /^(_rootJoint|root_02|Bip001_03)\./.test(t.name)));   // 제자리 비행 (이동은 게임이 담당)
+        a.tracks = a.tracks.filter(t => !(/^(_rootJoint|root_02|Bip001_03)\.(position|quaternion|rotation|scale)$/.test(t.name)));   // 제자리 비행 (이동은 게임이 담당)
         act[a.name] = mixer.clipAction(a);
       });
       D.mixer = mixer; D.act = act; D.holder = holder; D.ready = true;
@@ -60,19 +60,36 @@ window.DRG = (function () {
         if (want !== D.cur && D.act[want]) { const a = D.act[want], b = D.act[D.cur]; a.reset().setEffectiveWeight(1).play(); if (b) a.crossFadeFrom(b, 0.35, false); D.cur = want; }
         D.mixer.update(dt);
       }
-      /* 불꽃 */
-      D.fireT += dt;
-      let mx = 0, my = 0, mz = 0;
-      if (D.ready) { fw.set(Math.sin(ry) * Math.cos(pt), Math.sin(pt) * 0.9, Math.cos(ry) * Math.cos(pt)); mx = x + fw.x * 2.5; my = y + 2.5 + fw.y * 2.5; mz = z + fw.z * 2.5; }
-      if (fire && show && D.ready) {
-        let n = Math.floor(D.fireT * 110); if (n > 0) D.fireT = 0;
-        for (const p of D.parts) { if (n <= 0) break; if (p.life > 0) continue; n--; p.life = p.max = 0.55 + Math.random() * 0.35;
-          p.s.position.set(mx, my, mz); p.v.set(fw.x * 15 + (Math.random() - 0.5) * 3.2, fw.y * 15 + (Math.random() - 0.3) * 2.4, fw.z * 15 + (Math.random() - 0.5) * 3.2); p.s.visible = true; }
+      /* 불꽃: 누르는 동안 계속 뿜고, 떼면 바로 멈춤 */
+      D.fireT += dt; D.smokeT = (D.smokeT || 0) + dt;
+      let mx = x, my = y, mz = z;
+      fw.set(Math.sin(ry) * Math.cos(pt), Math.sin(pt) * 0.9, Math.cos(ry) * Math.cos(pt));
+      if (D.ready) { mx = x + fw.x * 2.4; my = y + 1.9 + fw.y * 2.4; mz = z + fw.z * 2.4; }
+      const on = fire && show && D.ready;
+      if (on) {
+        let n = Math.floor(D.fireT * 140); if (n > 0) D.fireT = 0;
+        let m = Math.floor(D.smokeT * 18); if (m > 0) D.smokeT = 0;
+        for (const p of D.parts) {
+          if (p.life > 0) continue;
+          if (p.smoke) { if (m <= 0) continue; m--; } else { if (n <= 0) continue; n--; }
+          const sp = p.smoke ? 6 : 17 + Math.random() * 7, cone = p.smoke ? 0.28 : 0.1;
+          p.life = p.max = p.smoke ? 1.3 + Math.random() * 0.6 : 0.5 + Math.random() * 0.45;
+          p.s.position.set(mx + (Math.random() - 0.5) * 0.3, my + (Math.random() - 0.5) * 0.3, mz + (Math.random() - 0.5) * 0.3);
+          p.v.set(fw.x * sp + (Math.random() - 0.5) * sp * cone * 2, fw.y * sp + (Math.random() - 0.5) * sp * cone * 2, fw.z * sp + (Math.random() - 0.5) * sp * cone * 2);
+          p.s.visible = true;
+        }
       }
       for (const p of D.parts) {
         if (p.life <= 0) { p.s.visible = false; continue; }
-        p.life -= dt; const k = 1 - p.life / p.max; p.s.position.addScaledVector(p.v, dt); p.v.y += dt * 1.5; p.v.multiplyScalar(1 - dt * 0.8);
-        p.s.scale.setScalar(0.8 + k * 3.4); p.s.material.opacity = Math.max(0, 0.95 * (1 - k)); p.s.material.color.setRGB(1, 1 - k * 0.55, 1 - k * 0.9);
+        p.life -= dt; const k = 1 - p.life / p.max;
+        p.s.position.addScaledVector(p.v, dt); p.v.y += dt * (p.smoke ? 2.5 : 3.2); p.v.multiplyScalar(1 - dt * (p.smoke ? 1.2 : 1.6));
+        p.s.position.x += Math.sin(p.ph + k * 9) * dt * 0.9; p.s.position.z += Math.cos(p.ph + k * 8) * dt * 0.9;
+        if (p.smoke) { p.s.scale.setScalar(1.6 + k * 5); p.s.material.opacity = Math.max(0, 0.5 * Math.min(1, k * 3) * (1 - k)); }
+        else {
+          p.s.scale.setScalar(0.5 + Math.sin(Math.min(1, k * 1.2) * 1.7) * 3.8);
+          p.s.material.opacity = Math.max(0, 0.95 * (1 - k * k));
+          p.s.material.color.setRGB(1, Math.max(0.12, 0.95 - k * 0.85), Math.max(0, 0.55 - k * 0.8));    // 노랑 → 주황 → 붉은색
+        }
       }
     };
     return D;

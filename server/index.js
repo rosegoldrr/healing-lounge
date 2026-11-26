@@ -344,7 +344,7 @@ wss.on('connection', (ws, req) => {
     }
     if (m.t === 'fire') {                                   // 드래곤 불 뿜기
       me.lastInput = now;
-      if (!me.ride || me.ride.seat !== 0 || now - (me.lastFire || 0) < 150) return;
+      if (!me.ride || me.ride.seat !== 0 || (m.on && now - (me.lastFire || 0) < 150)) return;
       const c = room.cars[me.ride.car]; if (!CARS.vinfo(c.id).fly) return;
       me.lastFire = now; return broadcast(room, { t: 'fire', car: c.id, on: m.on ? 1 : 0 });
     }
