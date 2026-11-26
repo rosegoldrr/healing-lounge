@@ -213,7 +213,8 @@ function buildCity(THREE, scene, renderer, OPT) {
   scene.fog = new THREE.Fog(FOG, 55, 300);
   const hemiL = new THREE.HemisphereLight('#d8ecff', '#a8b47c', 0.56); scene.add(hemiL);
   const sunL = new THREE.DirectionalLight('#fff0cf', 0.62); sunL.position.copy(sunDir).multiplyScalar(120); scene.add(sunL); scene.add(sunL.target);
-  const SHR = (OPT && OPT.touch) ? 1024 : ((renderer.capabilities.maxTextureSize >= 4096 && (navigator.hardwareConcurrency || 8) >= 6) ? 4096 : 2048);   // PC 고화질: 그림자 4096
+  const QL = (OPT && OPT.q) || '';   // 'low' 안전모드 · 'high' 최고화질 · 그 외 기본(보통)
+  const SHR = (OPT && OPT.touch) || QL === 'low' ? 1024 : (QL === 'high' && renderer.capabilities.maxTextureSize >= 4096 && (navigator.hardwareConcurrency || 8) >= 6 ? 4096 : 2048);   // PC 고화질: 그림자 4096
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
   sunL.castShadow = true; sunL.shadow.mapSize.set(SHR, SHR); { const c = sunL.shadow.camera; c.left = -46; c.right = 46; c.top = 46; c.bottom = -46; c.near = 5; c.far = 260; c.updateProjectionMatrix(); }
   sunL.shadow.bias = -0.0007; sunL.shadow.normalBias = 0.06;
@@ -572,7 +573,9 @@ function buildCity(THREE, scene, renderer, OPT) {
 
   /* ═════════ 가로등 ═════════ */
   const poleI = new Inst(cyl8, M('#3d3a4d')), lampBase = new Inst(cyl8, M('#3d3a4d')), headI = new Inst(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffe3ad' }));
+  const lampPos = [];
   function lamp(x, z, solid) {
+    lampPos.push([x, z]);
     poleI.add(x, 2.1, z, 0, 0.07, 4.2, 0.07); lampBase.add(x, 0.2, z, 0, 0.2, 0.4, 0.2); headI.add(x, 4.4, z, 0, 0.3, 0.34, 0.3);
     glow(x, 4.4, z); if (solid) { addCircle(x, z, 0.24); shadow(x + 0.4, z + 0.4, 1.2, 1.2, 0, 0.5); }
   }
@@ -912,10 +915,47 @@ function buildCity(THREE, scene, renderer, OPT) {
   for (let i = 0; i < 4; i++) { const A = 45 + 90 * i, S = 90 + 90 * i; lawnArcs.push([A + 6, S - 17], [S + 17, A + 84]); }
   const lawnMat = M('#7dbd5e', { map: groundTexR(10), polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
   lawnArcs.forEach(a => { const g = new THREE.RingGeometry(53.6, 59.8, 24, 1, -a[1] * D2R, (a[1] - a[0]) * D2R); const m = new THREE.Mesh(g, lawnMat); m.rotation.x = -Math.PI / 2; m.position.y = 0.05; scene.add(m); });
+  /* 광장 안쪽 꽃밭: 대로·건물·분수를 피해 둥근 잔디 섬을 흩뿌려 놓아요 (걸어 다닐 수 있는 장식) */
+  const gardens = []; city.gardens = gardens; const lanterns = []; let fountainGlow = null;
+  { let tries = 0; const starP = P(50, 13.5);
+    while (gardens.length < 11 && tries++ < 900) {
+      const deg = R(0, 360), r = R(15, 36), [x, z] = P(deg, r), rad = R(3.0, 5.4);
+      const ad = Math.min.apply(null, AV.map(a => { const d = (deg - a) * D2R; return Math.cos(d) > 0 ? r * Math.abs(Math.sin(d)) : 1e9; }));
+      if (ad < rad + 9) continue;
+      if (Math.hypot(x, z) < rad + 14) continue;
+      if (Math.hypot(x - starP[0], z - starP[1]) < rad + 6) continue;
+      if (city.colliders.some(c => Math.hypot(x - c.x, z - c.z) < c.r + rad + 1.5)) continue;
+      if (city.boxes.some(b => Math.hypot(x - b.x, z - b.z) < Math.hypot(b.hw, b.hd) + rad + 1.5)) continue;
+      if (city.trees.some(t => Math.hypot(x - t[0], z - t[1]) < rad + 2)) continue;
+      if (city.benches.some(b => Math.hypot(x - b.x, z - b.z) < rad + 1.5)) continue;
+      if (city.tables.some(b => Math.hypot(x - b.x, z - b.z) < rad + 1.5)) continue;
+      if (gardens.some(q => Math.hypot(x - q.x, z - q.z) < q.r + rad + 3)) continue;
+      gardens.push({ x, z, r: rad });
+    }
+    const edgeMat = M('#e4d8bd', { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    gardens.forEach(q => {
+      const d = new THREE.Mesh(new THREE.CircleGeometry(q.r, 32), lawnMat); d.rotation.x = -Math.PI / 2; d.position.set(q.x, 0.05, q.z); scene.add(d);
+      const e = new THREE.Mesh(new THREE.RingGeometry(q.r, q.r + 0.38, 40), edgeMat); e.rotation.x = -Math.PI / 2; e.position.set(q.x, 0.07, q.z); scene.add(e);
+       for (let k = 0; k < 5; k++) { const an = k / 5 * TAU + q.x, lx = q.x + Math.cos(an) * (q.r + 0.2), lz = q.z + Math.sin(an) * (q.r + 0.2); lanterns.push([lx, lz]); glowSmall.push(lx, 0.62, lz); }
+      glowPts.push(q.x, 1.7, q.z);
+    });
+    /* 분수 둘레 꽃띠 + 물가 등불 */
+    { const fr = new THREE.Mesh(new THREE.RingGeometry(6.5, 8.3, 56), lawnMat); fr.rotation.x = -Math.PI / 2; fr.position.y = 0.05; scene.add(fr);
+      [6.5, 8.3].forEach(r0 => { const e = new THREE.Mesh(new THREE.RingGeometry(r0, r0 + 0.3, 64), edgeMat); e.rotation.x = -Math.PI / 2; e.position.y = 0.07; scene.add(e); });
+      for (let k = 0; k < 14; k++) { const an = k / 14 * TAU; glowSmall.push(Math.cos(an) * 5.75, 1.3, Math.sin(an) * 5.75); }
+      const wat = []; for (let k = 0; k < 10; k++) { const an = k / 10 * TAU; wat.push(Math.cos(an) * 3.0, 0.9, Math.sin(an) * 3.0); } fountainGlow = wat; }
+  }
   const tufts = [], flowers = [];
   function onLawn(rMin, rMax, n, cb) { for (let k = 0; k < n; k++) { const a = lawnArcs[Math.floor(rnd() * lawnArcs.length)]; const deg = R(a[0] + 0.8, a[1] - 0.8), r = R(rMin, rMax); const [x, z] = P(deg, r); if (city.trees.some(t => Math.hypot(x - t[0], z - t[1]) < 1.1)) continue; cb(x, z); } }
   onLawn(54.2, 59.4, 520, (x, z) => { const w = R(0.9, 1.7); tufts.push({ x, y: w * 0.42, z, w, h: w * 0.85, c: cardJit() }); });
   onLawn(54.4, 59.2, 150, (x, z) => { const w = R(0.5, 0.8); flowers.push({ x, y: w * 0.9, z, w, h: w * 1.8, c: new THREE.Color(['#ffffff', '#ffd9e6', '#fff1b8', '#d8e6ff'][Math.floor(rnd() * 4)]) }); });
+  for (let k = 0; k < 240; k++) { const an = R(0, TAU), rr = R(6.7, 8.1), x = Math.cos(an) * rr, z = Math.sin(an) * rr, w = R(0.9, 1.6); tufts.push({ x, y: w * 0.42, z, w, h: w * 0.85, c: cardJit() }); }
+  for (let k = 0; k < 110; k++) { const an = R(0, TAU), rr = R(6.7, 8.1), x = Math.cos(an) * rr, z = Math.sin(an) * rr, w = R(0.5, 0.8); flowers.push({ x, y: w * 0.9, z, w, h: w * 1.8, c: new THREE.Color(['#ffffff', '#ffd9e6', '#fff1b8', '#d8e6ff', '#ffc9a8'][Math.floor(rnd() * 5)]) }); }
+  gardens.forEach(q => {
+    const at = () => { const a = R(0, TAU), rr = Math.sqrt(rnd()) * (q.r - 0.4); return [q.x + Math.cos(a) * rr, q.z + Math.sin(a) * rr]; };
+    for (let k = 0; k < Math.round(q.r * q.r * 4.5); k++) { const [x, z] = at(), w = R(0.9, 1.7); tufts.push({ x, y: w * 0.42, z, w, h: w * 0.85, c: cardJit() }); }
+    for (let k = 0; k < Math.round(q.r * q.r * 1.8); k++) { const [x, z] = at(), w = R(0.5, 0.85); flowers.push({ x, y: w * 0.9, z, w, h: w * 1.8, c: new THREE.Color(['#ffffff', '#ffd9e6', '#fff1b8', '#d8e6ff', '#ffc9a8', '#e6d4ff'][Math.floor(rnd() * 6)]) }); }
+  });
   cardSet(tuftTex(41), tufts, { sway: 0.06 }); cardSet(tuftTex(42), treeTufts, { sway: 0.07 }); cardSet(flowerTex(51), flowers, { sway: 0.07 });
   leafI.forEach(i => i.build()); branchI.build();
   [trunkI, planterI, bushI, flowerI, bolI, bolCap, benchSeat, benchBack, benchLeg, poleI, lampBase, headI].forEach(i => i.build());
@@ -930,6 +970,13 @@ function buildCity(THREE, scene, renderer, OPT) {
     const mt = new THREE.PointsMaterial({ size, map: glowTex, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: op }); glowMats.push([mt, op, size]); const p = new THREE.Points(g, mt); p.frustumCulled = false; scene.add(p);
   }
   glowPoints(glowPts, 4.0, '#ffd9a0', 0.35); glowPoints(glowSmall, 0.8, '#ffe2a8', 0.55);
+  if (fountainGlow) glowPoints(fountainGlow, 1.6, '#9fe8ff', 0.5);
+  /* 가로등·꽃밭 아래 바닥에 번지는 따뜻한 빛 웅덩이 (밤·노을에만 보여요) + 꽃밭 등불 알전구 */
+  const poolMat = new THREE.MeshBasicMaterial({ map: glowTex, color: '#ffc87a', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+  { const pools = lampPos.map(p => [p[0], p[1], 9]).concat(gardens.map(q => [q.x, q.z, q.r * 2 + 5])); const pg = new THREE.PlaneGeometry(1, 1); pg.rotateX(-Math.PI / 2);
+    const pm = new THREE.InstancedMesh(pg, poolMat, Math.max(1, pools.length)); pools.forEach((p, i) => { tmp.position.set(p[0], 0.09, p[1]); tmp.rotation.set(0, 0, 0); tmp.scale.set(p[2], 1, p[2]); tmp.updateMatrix(); pm.setMatrixAt(i, tmp.matrix); }); pm.frustumCulled = false; pm.renderOrder = 2; scene.add(pm);
+    if (lanterns.length) { const bm = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffe3ad' }), lanterns.length), pst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.04, 0.55, 6), M('#3d3a4d'), lanterns.length);
+      lanterns.forEach((p, i) => { tmp.position.set(p[0], 0.62, p[1]); tmp.rotation.set(0, 0, 0); tmp.scale.set(1, 1, 1); tmp.updateMatrix(); bm.setMatrixAt(i, tmp.matrix); tmp.position.set(p[0], 0.28, p[1]); tmp.updateMatrix(); pst.setMatrixAt(i, tmp.matrix); }); scene.add(bm); scene.add(pst); } }
 
   /* ═════════ 충돌 · 카메라 · 갱신 ═════════ */
   city.resolve = function (p, rad) {
@@ -1105,6 +1152,13 @@ function buildCity(THREE, scene, renderer, OPT) {
     lp('Flower_3_Group', 54.4, 59.2, 14, 0.9, 1.4); lp('Flower_4_Group', 54.4, 59.2, 14, 0.9, 1.4);
     lp('Grass_Common_Tall', 54.2, 59.4, 18, 0.8, 1.3); lp('Grass_Wispy_Tall', 54.2, 59.4, 12, 0.8, 1.3);
     lp('Rock_Medium_1', 55.5, 58.5, 4, 0.5, 0.8); lp('Rock_Medium_2', 55.5, 58.5, 4, 0.5, 0.8);
+    { const put = (key, n, a0, a1) => { for (let k = 0; k < n; k++) { const an = R(0, TAU), rr = R(6.9, 7.9); L[key].push([Math.cos(an) * rr, 0.05, Math.sin(an) * rr, R(0, 6.28), R(a0, a1)]); } };
+      put('Bush_Common_Flowers', 6, 0.7, 1.0); put('Flower_3_Group', 14, 0.8, 1.2); put('Flower_4_Group', 14, 0.8, 1.2); put('Grass_Common_Tall', 8, 0.7, 1.1); }
+    gardens.forEach(q => {
+      const put = (key, n, a0, a1) => { for (let k = 0; k < n; k++) { const a = R(0, TAU), rr = Math.sqrt(rnd()) * (q.r - 0.8); L[key].push([q.x + Math.cos(a) * rr, 0.05, q.z + Math.sin(a) * rr, R(0, 6.28), R(a0, a1)]); } };
+      put('Bush_Common_Flowers', Math.max(1, Math.round(q.r * 0.6)), 0.8, 1.2); put('Flower_3_Group', Math.round(q.r * 1.4), 0.9, 1.4); put('Flower_4_Group', Math.round(q.r * 1.4), 0.9, 1.4);
+      put('Grass_Common_Tall', Math.round(q.r * 1.2), 0.8, 1.3); put('Grass_Wispy_Tall', Math.round(q.r), 0.8, 1.3); put('Fern_1', Math.round(q.r * 0.5), 0.8, 1.2); put('Rock_Medium_1', 1, 0.5, 0.8);
+    });
     // ③ 동네 집 앞마당: 집 앞에 덤불·꽃 (집 놓는 코드가 spots를 채운 뒤 사용)
     {
       const spots = city.townSpots || [], bs = [], fl = [];
@@ -1229,7 +1283,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     const w = Math.max(2, Math.floor(v.x * q)), h = Math.max(2, Math.floor(v.y * q));
     if (rt) rt.dispose();
     const o = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
-    if (ms) { rt = new THREE.WebGLMultisampleRenderTarget(w, h, o); rt.samples = (OPT && OPT.touch) ? 2 : Math.min(8, renderer.capabilities.maxSamples || 4); } else rt = new THREE.WebGLRenderTarget(w, h, o);
+    if (ms) { rt = new THREE.WebGLMultisampleRenderTarget(w, h, o); rt.samples = ((OPT && OPT.touch) || QL === 'low') ? 2 : Math.min(QL === 'high' ? 8 : 4, renderer.capabilities.maxSamples || 4); } else rt = new THREE.WebGLRenderTarget(w, h, o);
     postMat.uniforms.uRes.value.set(w, h);
   }
   resizePost();
@@ -1261,6 +1315,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     KFc.forEach(n => CUR[n].copy(a[n]).lerp(b[n], t));
     const L = (x, y) => x + (y - x) * t;
     const hI = L(a.hI, b.hI), sI = L(a.sI, b.sI), night = L(a.night, b.night), bloom = L(a.bloom, b.bloom);
+    const dusk = ss(16.3, 18.3, h) * (1 - ss(19.6, 20.8, h)) + (1 - ss(6.0, 7.2, h)) * ss(4.6, 5.6, h) * 0.7;   // 노을·새벽: 창문과 가로등이 먼저 따뜻하게 켜져요
     for (let k = 0; k < 3; k++) CUR.tint[k] = L(a.tint[k], b.tint[k]);
     // 태양/달 방향
     const dayW = ss(5.0, 6.2, h) * (1 - ss(19.2, 20.6, h));
@@ -1271,11 +1326,12 @@ function buildCity(THREE, scene, renderer, OPT) {
     hemiL.color.copy(CUR.hS); hemiL.groundColor.copy(CUR.hG); hemiL.intensity = hI;
     scene.fog.color.copy(CUR.hor).lerp(CUR.mid, 0.12 * (1 - night)); scene.background.copy(scene.fog.color);
     const su = skyMat.uniforms; su.uTop.value.copy(CUR.top); su.uMid.value.copy(CUR.mid); su.uHor.value.copy(scene.fog.color); su.uSunCol.value.copy(CUR.sC); su.uNight.value = night;
-    const bu = bMat.uniforms; bu.uFog.value.copy(scene.fog.color); bu.uNight.value = night * 0.95 + 0.05;
+    const bu = bMat.uniforms; bu.uFog.value.copy(scene.fog.color); bu.uNight.value = Math.max(night * 0.95 + 0.05, dusk * 0.62);
     bu.uAmbTop.value.copy(CUR.hS).multiplyScalar(hI * 1.7); bu.uAmbBot.value.copy(CUR.hG).lerp(CUR.hS, 0.35).multiplyScalar(hI * 1.5); bu.uSunCol.value.copy(CUR.sC).multiplyScalar(sI * 0.95);
     cardTint.value.setRGB(CUR.tint[0], CUR.tint[1], CUR.tint[2]); rimU.value.copy(CUR.rim); rimK.value = 0.34 - 0.12 * night;
     clouds.children.forEach(c => { c.material.color.copy(CUR.cl); c.material.opacity = (c.userData.op || 0.9) * (1 - 0.45 * night); });
-    glowMats.forEach(g => { g[0].opacity = g[1] * (0.1 + 2.3 * night * night); g[0].size = g[2] * (0.75 + 0.6 * night); });
+    glowMats.forEach(g => { g[0].opacity = g[1] * (0.1 + 2.3 * night * night + 1.1 * dusk); g[0].size = g[2] * (0.75 + 0.6 * night); });
+    poolMat.opacity = Math.min(0.62, 0.62 * night + 0.5 * dusk);
     postMat.uniforms.uBloom.value = bloom; city.sunAmt = (1 - night) * dayW; curNight = night;
   };
   city.setTime(16.5);

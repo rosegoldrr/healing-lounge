@@ -132,7 +132,7 @@ function broadcast(room, obj, exceptId) {
 }
 const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass, c.eng || 0, round2(c.y || 0), round2(c.pt || 0), c.fx || 0];
 const aniPub = a => [a.id, round2(a.x), round2(a.z), round2(a.ry), a.mv, a.pose, a.owner];
-const pub = p => ({ id: p.id, name: p.name, hue: p.hue, gen: p.gen || 0, ac: p.ac || 0, dr: p.dr || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
+const pub = p => ({ id: p.id, name: p.name, hue: p.hue, gen: (p.acct && p.acct.sv && p.acct.sv.adm) ? 99 : (p.gen || 0), ac: p.ac || 0, dr: p.dr || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
 function round2(v) { return Math.round(v * 100) / 100; }
 
 /* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
@@ -499,13 +499,15 @@ function stepAnimals(room, now, dt) {
       continue;
     }
     /* 친해진 사람(친밀도 Lv2 이상)이 가까이 오면 다가와서 반겨요 */
-    let fr = null, fd = 11;
+    let fr = null, fd = 1e9;
     for (const q of room.players.values()) {
-      if (!q.acct || q.ride || !q.acct.sv.bond || ACCT.bondLv(q.acct.sv.bond[a.id] || 0) < 2) continue;
-      const d = Math.hypot(q.x - a.x, q.z - a.z); if (d < fd) { fd = d; fr = q; }
+      if (!q.acct || q.ride || !q.acct.sv.bond) continue;
+      const lv = ACCT.bondLv(q.acct.sv.bond[a.id] || 0); if (lv < 2) continue;
+      const rad = lv >= 4 ? 90 : lv >= 3 ? 32 : 11;        // 더 친해질수록 멀리서도 달려오고, Lv4부터는 광장 어디서든 따라와요
+      const d = Math.hypot(q.x - a.x, q.z - a.z); if (d <= rad && d < fd) { fd = d; fr = q; }
     }
     if (fr) {
-      if (fd > 2.0) { const k = Math.min(1, (ASPD[a.kind] * 1.2 * dt) / fd); a.x += (fr.x - a.x) * k; a.z += (fr.z - a.z) * k; a.ry = Math.atan2(fr.x - a.x, fr.z - a.z); a.mv = 1; a.pose = 0; a.until = 0; continue; }
+      if (fd > 2.0) { const k = Math.min(1, (ASPD[a.kind] * (fd > 14 ? 2.4 : 1.2) * dt) / fd); a.x += (fr.x - a.x) * k; a.z += (fr.z - a.z) * k; a.ry = Math.atan2(fr.x - a.x, fr.z - a.z); a.mv = 1; a.pose = 0; a.until = 0; continue; }
       a.ry = Math.atan2(fr.x - a.x, fr.z - a.z); a.tx = a.x; a.tz = a.z;
       if (now > (a.greetAt || 0)) { a.greetAt = now + 25000; a.hold = now + 1800; a.pose = a.kind === 'dog' ? 3 : 1; broadcast(room, { t: 'afx', id: a.id, e: 'greet' }); continue; }
       a.pose = 1; a.until = now + 1500; continue;

@@ -2081,6 +2081,38 @@ var X=[
 "Toque para fechar",
 "Нажмите, чтобы закрыть",
 "برای بستن لمس کن"
+],
+[
+"멀리서도 달려와요 🐾",
+"they now run to you from far away 🐾",
+"它现在会从远处跑向你 🐾",
+"它現在會從遠處跑向你 🐾",
+"遠くからでも駆けつけてくれます 🐾",
+"ahora corre hacia ti desde lejos 🐾",
+"il accourt désormais de loin 🐾",
+"kommt jetzt schon von weitem angerannt 🐾",
+"giờ bé sẽ chạy đến từ xa 🐾",
+"ตอนนี้วิ่งมาหาจากที่ไกลแล้ว 🐾",
+"kini berlari menghampiri dari jauh 🐾",
+"agora corre até você de longe 🐾",
+"теперь прибегает издалека 🐾",
+"حالا از دور هم به سمتت می‌دود 🐾"
+],
+[
+"이제 어디든 따라와요 💞",
+"now follows you anywhere 💞",
+"现在无论去哪儿都会跟着你 💞",
+"現在無論去哪兒都會跟著你 💞",
+"もうどこへでもついてきます 💞",
+"ahora te sigue a donde vayas 💞",
+"vous suit désormais partout 💞",
+"folgt dir jetzt überallhin 💞",
+"giờ bé theo bạn đến mọi nơi 💞",
+"ตอนนี้ตามไปได้ทุกที่ 💞",
+"kini mengikutimu ke mana saja 💞",
+"agora te segue para qualquer lugar 💞",
+"теперь следует за вами повсюду 💞",
+"حالا هر جا بروی دنبالت می‌آید 💞"
 ]
 ];
 function put(k,vals){var i=D.k.indexOf(k);
