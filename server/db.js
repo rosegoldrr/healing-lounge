@@ -29,6 +29,7 @@ async function init(opts) {
     pool.on('error', e => console.error('db 연결 오류', e.message));
     await pool.query('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, pass TEXT NOT NULL, created BIGINT NOT NULL, last_login BIGINT, save TEXT NOT NULL DEFAULT \'{}\')');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
+    await pool.query('CREATE TABLE IF NOT EXISTS notes (id SERIAL PRIMARY KEY, text TEXT NOT NULL, author TEXT, created BIGINT NOT NULL, rep INT NOT NULL DEFAULT 0)');
     secret = process.env.AUTH_SECRET || crypto.createHash('sha256').update('hl-secret:' + url).digest('hex');
   } else {
     mode = 'file';
@@ -89,4 +90,22 @@ async function count() {
   if (mode === 'pg') { const r = await pool.query('SELECT COUNT(*) c FROM users'); return +r.rows[0].c; }
   return mem.users.length;
 }
-module.exports = { init, getByEmail, setPass, setEmail, getByName, getById, createUser, saveUser, touchLogin, deleteUser, count, getSecret, getMode, _flush: flushFile };
+/* ── 익명 응원 쪽지 ── */
+async function noteAdd(text, author) {
+  const now = Date.now();
+  if (mode === 'pg') { const r = await pool.query('INSERT INTO notes (text,author,created) VALUES ($1,$2,$3) RETURNING id', [text, author, now]); return +r.rows[0].id; }
+  if (!mem.notes) mem.notes = []; if (!mem.nextNote) mem.nextNote = 1;
+  const n = { id: mem.nextNote++, x: text, a: author, t: now, r: 0 }; mem.notes.push(n);
+  if (mem.notes.length > 2000) mem.notes.splice(0, mem.notes.length - 2000);
+  later(); return n.id;
+}
+async function noteRecent(limit) {
+  limit = limit || 500;
+  if (mode === 'pg') { const r = await pool.query('SELECT id,text,author,rep FROM notes WHERE rep < 2 ORDER BY id DESC LIMIT $1', [limit]); return r.rows.map(q => ({ id: +q.id, x: q.text, a: q.author || '', r: +q.rep })); }
+  return (mem.notes || []).filter(q => q.r < 2).slice(-limit).map(q => ({ id: q.id, x: q.x, a: q.a || '', r: q.r }));
+}
+async function noteReport(id, rep) {
+  if (mode === 'pg') { await pool.query('UPDATE notes SET rep=$2 WHERE id=$1', [id, rep]); return; }
+  const x = (mem.notes || []).find(q => q.id === id); if (x) { x.r = rep; later(); }
+}
+module.exports = { noteAdd, noteRecent, noteReport, init, getByEmail, setPass, setEmail, getByName, getById, createUser, saveUser, touchLogin, deleteUser, count, getSecret, getMode, _flush: flushFile };

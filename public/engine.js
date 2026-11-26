@@ -6,13 +6,13 @@ window.ENG = (function () {
     v6:     { cyl: 6,  idle: 800,  red: 6800,  gears: 5, vmax: 27, cut: 2800, hq: 1.3, sub: 0.1,  gain: 0.5,  noise: 0.20, drive: 1.8 },
     v8:     { cyl: 8,  idle: 750,  red: 7000,  gears: 5, vmax: 27, cut: 2600, hq: 1.2, sub: 0.45, gain: 0.55, noise: 0.22, drive: 2.0 },
     diesel: { cyl: 4,  idle: 650,  red: 3600,  gears: 5, vmax: 24, cut: 1500, hq: 1.8, sub: 0.0,  gain: 0.55, noise: 0.30, drive: 1.2, clatter: 1 },
-    i6:     { cyl: 6,  idle: 800,  red: 7200,  gears: 8, vmax: 30, cut: 3400, hq: 1.1, sub: 0.2,  gain: 0.6,  noise: 0.22, drive: 2.4, pops: 1 },
-    i6r:    { cyl: 6,  idle: 950,  red: 8000,  gears: 6, vmax: 33, cut: 4800, hq: 0.85, sub: 0.0, gain: 0.62, noise: 0.28, drive: 3.2, pops: 1, whine: 1 },
-    v8t:    { cyl: 8,  idle: 1000, red: 7800,  gears: 5, vmax: 34, cut: 3600, hq: 1.0, sub: 0.5,  gain: 0.62, noise: 0.25, drive: 2.6, turbo: 1, pops: 1 },
-    v12:    { cyl: 12, idle: 900,  red: 8200,  gears: 5, vmax: 34, cut: 4200, hq: 0.95, sub: 0.1, gain: 0.6,  noise: 0.18, drive: 2.2 },
-    v12b:   { cyl: 12, idle: 900,  red: 8500,  gears: 7, vmax: 35, cut: 4800, hq: 0.85, sub: 0.1, gain: 0.62, noise: 0.2,  drive: 2.6, pops: 1 },
-    v12h:   { cyl: 12, idle: 950,  red: 9000,  gears: 7, vmax: 36, cut: 5200, hq: 0.8,  sub: 0.0, gain: 0.62, noise: 0.18, drive: 2.4, hybrid: 1 },
-    i4b:    { cyl: 4,  idle: 1300, red: 13500, gears: 6, vmax: 32, cut: 6500, hq: 0.8,  sub: 0.0, gain: 0.5,  noise: 0.22, drive: 2.0, thin: 1 },
+    i6:     { cyl: 6,  idle: 800,  red: 7200,  gears: 8, vmax: 30, cut: 3800, hq: 1.0,  sub: 0.15, gain: 0.6,  noise: 0.24, drive: 2.6, pops: 1, turbo: 1 },   // M4: 직렬6 트윈터보 — 매끈한 굵은 소리 + 터보 휘파람 + 팝
+    i6r:    { cyl: 6,  idle: 950,  red: 8200,  gears: 6, vmax: 33, cut: 5600, hq: 0.8, sub: 0.0, gain: 0.64, noise: 0.3, drive: 3.4, pops: 1, whine: 1 },   // M4 GT3: 레이싱 직렬6 — 날카롭고 거친 소리 + 기어 휘파람
+    v8t:    { cyl: 8,  idle: 1000, red: 7800,  gears: 5, vmax: 34, cut: 3400, hq: 1.05, sub: 0.6,  gain: 0.64, noise: 0.28, drive: 3.0, turbo: 1, pops: 1 },   // F40: 트윈터보 V8 — 투박하게 으르렁 + 터보 휘파람
+    v12:    { cyl: 12, idle: 900,  red: 8200,  gears: 5, vmax: 34, cut: 5400, hq: 0.78, sub: 0.0, gain: 0.62, noise: 0.22, drive: 2.8 },   // 쿤타치: 자연흡기 V12 — 높고 거친 고음 비명
+    v12b:   { cyl: 12, idle: 900,  red: 8600,  gears: 7, vmax: 35, cut: 6800, hq: 0.68, sub: 0.0, gain: 0.66, noise: 0.28, drive: 3.4, pops: 1 },   // 센테나리오: 날카로운 V12 + 변속 때 폭발음
+    v12h:   { cyl: 12, idle: 950,  red: 9500,  gears: 7, vmax: 36, cut: 7600, hq: 0.62, sub: 0.0, gain: 0.64, noise: 0.2,  drive: 2.6, hybrid: 1, pops: 1 },   // 라페라리: 9500rpm 고음 V12 + 하이브리드 전동 소리
+    i4b:    { cyl: 4,  idle: 1400, red: 12500, gears: 6, vmax: 34, cut: 9000, hq: 0.62, sub: 0.0, gain: 0.5,  noise: 0.34, drive: 3.0, thin: 1, pops: 1, rasp: 1 },   // 직렬4기통 슈퍼바이크: 고회전 비명 + 흡기 으르렁 + 변속 팝
     dragon: { dragon: 1 }
   };
   const lerp = (a, b, k) => a + (b - a) * k, clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -122,7 +122,7 @@ window.ENG = (function () {
     // 흡기·배기 바람소리 + 디젤 덜덜
     let ngv = (P.noise * (0.2 + 0.8 * th) * (0.3 + load)) * vol * volMul * idleOn;
     if (P.clatter) ngv *= 1.4 + 0.5 * Math.sin(E.t * (rpm / 60 * 2));
-    N.nb.frequency.setTargetAtTime(900 + rpm * 0.35, t, 0.05); N.ng.gain.setTargetAtTime(Math.max(0.0001, ngv * 0.5), t, 0.04);
+    N.nb.frequency.setTargetAtTime(P.rasp ? 1800 + rpm * 0.6 : 900 + rpm * 0.35, t, 0.05); N.ng.gain.setTargetAtTime(Math.max(0.0001, ngv * 0.5), t, 0.04);
     // 변속 · 가속 뗄 때 배기 팝
     if (P.pops && E.pop > 0 && E.st === 2) { N.ng.gain.setValueAtTime(0.5 * vol, t); N.ng.gain.setTargetAtTime(0.0001, t + 0.01, 0.06); N.lp.frequency.setValueAtTime(P.cut * 1.2, t); E.pop = 0; }
     else E.pop = 0;

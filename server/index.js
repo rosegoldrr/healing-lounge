@@ -80,6 +80,9 @@ function handleAuth(req, res, kind) {
     } catch (e) { console.error('auth 오류', e.message); res.writeHead(500, H); res.end('{"ok":false,"err":"서버에 문제가 생겼어요. 잠시 후 다시 해 주세요"}'); }
   });
 }
+/* 운영자 계정 (로그인 아이디, 쉼표로 여러 개) — Render 환경변수 ADMIN_USERS 로 바꿀 수 있어요 */
+const ADMIN_EMAILS = new Set(String(process.env.ADMIN_EMAILS || 'rr.rosegold.rr@gmail.com').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
+const ADMIN_USERS = new Set(String(process.env.ADMIN_USERS || 'rosegold').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
 const online = new Map();                                   // 계정 id -> 접속 중인 플레이어 (한 계정은 한 곳에서만)
 const kstDayNum = () => Math.floor((Date.now() + 9 * 3600 * 1000) / 86400000);
 function pushState(p, extra) { if (p.acct) { send(p.ws, Object.assign({ t: 'd', s: ACCT.pubState(ACCT.ensureDay(p.acct.sv, kstDayNum())) }, extra || {})); p.acct.push = false; } }
@@ -111,6 +114,9 @@ function getRoom(id) {
 }
 let nextId = 1;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/* 익명 응원 쪽지 (서버가 켜져 있는 동안 보관돼요). 처음엔 따뜻한 기본 쪽지로 시작해요. */
+const NOTES = ['오늘도 정말 수고했어요', '잘하고 있어요, 진짜로', '천천히 해도 괜찮아요', '당신이 있어서 오늘이 조금 더 따뜻해요', '힘든 날도 지나갈 거예요', '지금 이 순간만큼은 푹 쉬어요', '오늘 하루 버텨낸 것만으로도 대단해요', '맛있는 거 먹고 푹 자요', '당신의 속도로 가면 돼요', '여기 있는 동안은 아무 걱정 말아요', '내일은 오늘보다 조금 더 가볍기를', '고생 많았어요, 정말로'].map((x, i) => ({ id: -(i + 1), x, from: 0, rep: 0, rb: new Set() }));
+let noteSeq = 0;
 const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
 
 function cleanName(raw) {
@@ -124,9 +130,9 @@ function broadcast(room, obj, exceptId) {
   const msg = JSON.stringify(obj);
   for (const p of room.players.values()) if (p.id !== exceptId && p.ws.readyState === 1) p.ws.send(msg);
 }
-const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass, c.eng || 0, round2(c.y || 0), round2(c.pt || 0)];
+const carPub = c => [c.id, round2(c.x), round2(c.z), round2(c.ry), round2(c.sp), c.lights, c.color, c.driver, c.pass, c.eng || 0, round2(c.y || 0), round2(c.pt || 0), c.fx || 0];
 const aniPub = a => [a.id, round2(a.x), round2(a.z), round2(a.ry), a.mv, a.pose, a.owner];
-const pub = p => ({ id: p.id, name: p.name, hue: p.hue, gen: p.gen || 0, ac: p.ac || 0, dr: p.dr || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
+const pub = p => ({ id: p.id, name: p.name, hue: p.hue, gen: (p.acct && p.acct.sv && p.acct.sv.adm) ? 99 : (p.gen || 0), ac: p.ac || 0, dr: p.dr || 0, x: round2(p.x), z: round2(p.z), ry: round2(p.ry), mv: p.mv, y: round2(p.y || 0), st: p.st || 0 });
 function round2(v) { return Math.round(v * 100) / 100; }
 
 /* 입장 위치: 분수 둘레(벤치와 나무 사이)에서 겹치지 않게 */
@@ -158,7 +164,7 @@ function leaveCar(room, me) {
   send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
 }
 function releasePlayer(room, me) {
-  if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (!c.pass) c.eng = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
+  if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (!c.pass) { c.eng = 0; c.fx = 0; } if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
   for (const a of room.animals) if (a.owner === me.id) { a.owner = 0; broadcast(room, { t: 'leash', id: a.id, owner: 0 }); }
 }
 const ACC_MAX = 7;                                         // 꾸미기 아이템 번호 0(없음)~7
@@ -202,6 +208,7 @@ wss.on('connection', (ws, req) => {
           const old = online.get(u.id); if (old) { old.acct = null; send(old.ws, { t: 'kicked', m: '다른 곳에서 로그인해서 연결을 끊었어요' }); old.ws.close(); }
           acct = { id: u.id, username: u.username, sv: ACCT.norm(u.save), dirty: false, push: false, savedAt: 0 };
           ACCT.ensureDay(acct.sv, kstDayNum());
+          acct.sv.adm = (ADMIN_USERS.has(u.username) || (u.email && ADMIN_EMAILS.has(String(u.email).toLowerCase()))) ? 1 : 0; if (acct.sv.adm) { acct.sv.stars = 99999999; acct.dirty = true; }   // 운영자: 재화 무제한
         }
         const gIn = Math.floor(num(m.gen, -1)), gOk = gIn >= 0 && gIn <= 52, gen = acct ? (gOk ? gIn : (acct.sv.gen || 0)) : (gOk ? gIn : 0);
         if (acct && gOk && acct.sv.gen !== gIn) { acct.sv.gen = gIn; acct.dirty = true; }
@@ -292,8 +299,9 @@ wss.on('connection', (ws, req) => {
       const idx = DAILY.MENU.findIndex(q => q.id === String(m.id || '')); if (idx < 0) return;
       if (!ZN.CAFE.atCounter(me.x, me.z)) return send(ws, { t: 'toast', m: '카운터 앞으로 와 주세요 ☕' });
       const it = DAILY.MENU[idx], sv = me.acct.sv;
+      if (sv.adm) sv.stars = 99999999;
       if (sv.stars < it.p) return send(ws, { t: 'toast', m: '✨ 이 부족해요 (' + it.n + ' ✨' + it.p + ')' });
-      me.lastOrder = now; sv.stars -= it.p; sv.orders = (sv.orders || 0) + 1;
+      me.lastOrder = now; sv.stars -= it.p; sv.orders = (sv.orders || 0) + 1; if (sv.adm) sv.stars = 99999999;
       me.dr = idx + 1; hid(me, 'first_order', 1); hid(me, 'regular', 1);
       broadcast(room, { t: 'drink', id: me.id, d: me.dr });
       send(ws, { t: 'ordered', item: it.id });
@@ -331,7 +339,7 @@ wss.on('connection', (ws, req) => {
       if (d > maxD) { nx = c.x + (nx - c.x) * maxD / d; nz = c.z + (nz - c.z) * maxD / d; send(ws, { t: 'cfix', x: round2(nx), z: round2(nz) }); }
       { const q = fl ? CARS.clamp(nx, nz, CFG.worldRadius, -25, 40) : CARS.clamp(nx, nz, CFG.worldRadius, 0.6, 7.6); nx = q[0]; nz = q[1]; }
       c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, fl ? 55 : 42);
-      if (fl) { c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = 0; }
+      if (fl) { c.gy = clamp(num(m.gy, 0), 0, 90); c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = 0; }
       return;
     }
     if (m.t === 'carset') {                                 // 색상 · 라이트
@@ -340,6 +348,12 @@ wss.on('connection', (ws, req) => {
       const c = room.cars[me.ride.car];
       if (m.c !== undefined) c.color = clamp(Math.floor(num(m.c, c.color)), 0, CARS.COLORS.length - 1);
       if (m.l !== undefined) c.lights = m.l ? 1 : 0;
+      if (c.id === 6 && (m.b !== undefined || m.s !== undefined)) {        // 경찰차: 경광등(1) · 사이렌(2)
+        let f = c.fx || 0;
+        if (m.b !== undefined) f = m.b ? (f | 1) : (f & ~1);
+        if (m.s !== undefined) f = m.s ? (f | 2) : (f & ~2);
+        c.fx = f;
+      }
       if (m.e !== undefined) { c.eng = m.e ? 1 : 0; if (!c.eng) c.sp = c.sp; }
       return;
     }
@@ -370,6 +384,15 @@ wss.on('connection', (ws, req) => {
       if (now - (me.lastAct || 0) < 500) return; me.lastAct = now;
       if (m.t === 'pet') prog(me, 'pet', 1);
       a.hold = now + (m.t === 'treat' ? 2600 : 2200); a.pose = a.kind === 'dog' ? 3 : 1; a.ry = Math.atan2(me.x - a.x, me.z - a.z); a.mv = 0;
+      if (me.acct) {                                        // 친밀도: 로그인한 사람만 쌓여요 (같은 아이는 3초에 한 번)
+        me.bondAt = me.bondAt || {};
+        if (now - (me.bondAt[a.id] || 0) > 3000) {
+          me.bondAt[a.id] = now;
+          const r = ACCT.bondAdd(me.acct.sv, a.id, m.t === 'treat' ? 3 : 1); me.acct.dirty = true;
+          send(ws, { t: 'bond', id: a.id, xp: r.xp, lv: r.lv, next: r.next, up: r.up, gift: r.gift });
+          if (r.up) pushState(me);
+        }
+      }
       return broadcast(room, { t: 'afx', id: a.id, e: m.t });
     }
     if (m.t === 'pickup') {
@@ -408,9 +431,42 @@ wss.on('connection', (ws, req) => {
     if (m.t === 'emote') {                                  // 이모티콘
       me.lastInput = now;
       const e = Math.floor(num(m.e, -1));
-      if (e < 0 || e > 7 || now - (me.lastEmote || 0) < 700) return;
+      if (e < 0 || e > 15 || now - (me.lastEmote || 0) < 700) return;
       me.lastEmote = now; prog(me, 'emote', 1); hid(me, 'emotes', 1);
       return broadcast(room, { t: 'emote', id: me.id, e });
+    }
+    if (m.t === 'noteSend') {                               // 익명 응원 쪽지 남기기
+      me.lastInput = now;
+      let txt = String(m.x || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (txt.length < 2) return send(ws, { t: 'noteErr', x: '두 글자 이상 적어 주세요' });
+      if (now - (me.lastNote || 0) < 20000) return send(ws, { t: 'noteErr', x: '잠시 뒤에 다시 남겨 주세요' });
+      if (/https?:|www\.|@|\d{4,}|\.com|\.kr/i.test(txt)) return send(ws, { t: 'noteErr', x: '링크나 연락처는 남길 수 없어요' });
+      const f = FILTER.clean(txt);
+      if (f.changed) return send(ws, { t: 'noteErr', x: '따뜻한 말만 남길 수 있어요 🌿' });
+      me.lastNote = now; me.noteCnt = (me.noteCnt || 0) + 1;
+      if (me.noteCnt > 8) return send(ws, { t: 'noteErr', x: '오늘은 충분히 남겼어요. 고마워요 💌' });
+      const key = me.acct ? 'u' + me.acct.id : 's' + me.id, note = { id: -1000000 - (++noteSeq), x: txt, from: key, rep: 0, rb: new Set() };
+      NOTES.push(note); while (NOTES.length > 500) NOTES.shift();
+      DB.noteAdd(txt, key).then(id => { note.id = id; }).catch(e => console.error('쪽지 저장 실패', e.message));
+      return send(ws, { t: 'noteOk' });
+    }
+    if (m.t === 'noteGet') {                                // 다른 사람이 남긴 쪽지 하나 받기
+      me.lastInput = now;
+      if (now - (me.lastNoteGet || 0) < 800) return;
+      me.lastNoteGet = now; me.seenNotes = me.seenNotes || new Set();
+      const mk = me.acct ? 'u' + me.acct.id : 's' + me.id;
+      const pool = NOTES.filter(n => n.from !== mk && !me.seenNotes.has(n.id));
+      const base = pool.length ? pool : NOTES.filter(n => n.from !== mk);
+      const n = base.length ? base[Math.floor(Math.random() * base.length)] : null;
+      if (!n) return send(ws, { t: 'note', id: 0, x: '오늘도 여기까지 오느라 수고했어요.' });
+      me.seenNotes.add(n.id); if (me.seenNotes.size > 400) me.seenNotes.clear();
+      return send(ws, { t: 'note', id: n.id, x: n.x });
+    }
+    if (m.t === 'noteRep') {                                // 신고: 두 사람이 신고하면 사라져요
+      me.lastInput = now;
+      const n = NOTES.find(q => q.id === m.id), rk = me.acct ? 'u' + me.acct.id : 's' + me.id;
+      if (n && !n.rb.has(rk)) { n.rb.add(rk); n.rep++; if (n.id > 0) DB.noteReport(n.id, n.rep).catch(() => { }); if (n.rep >= 2) NOTES.splice(NOTES.indexOf(n), 1); }
+      return send(ws, { t: 'noteRepOk' });
     }
     if (m.t === 'ping') { me.lastInput = now; send(ws, { t: 'pong', c: num(m.c, 0), s: Date.now() }); return; }
   });
@@ -442,6 +498,20 @@ function stepAnimals(room, now, dt) {
       } else { a.still += dt; a.pose = a.still > 2 ? 1 : 0; }
       continue;
     }
+    /* 친해진 사람(친밀도 Lv2 이상)이 가까이 오면 다가와서 반겨요 */
+    let fr = null, fd = 1e9;
+    for (const q of room.players.values()) {
+      if (!q.acct || q.ride || !q.acct.sv.bond) continue;
+      const lv = ACCT.bondLv(q.acct.sv.bond[a.id] || 0); if (lv < 2) continue;
+      const rad = lv >= 4 ? 90 : lv >= 3 ? 32 : 11;        // 더 친해질수록 멀리서도 달려오고, Lv4부터는 광장 어디서든 따라와요
+      const d = Math.hypot(q.x - a.x, q.z - a.z); if (d <= rad && d < fd) { fd = d; fr = q; }
+    }
+    if (fr) {
+      if (fd > 2.0) { const k = Math.min(1, (ASPD[a.kind] * (fd > 14 ? 2.4 : 1.2) * dt) / fd); a.x += (fr.x - a.x) * k; a.z += (fr.z - a.z) * k; a.ry = Math.atan2(fr.x - a.x, fr.z - a.z); a.mv = 1; a.pose = 0; a.until = 0; continue; }
+      a.ry = Math.atan2(fr.x - a.x, fr.z - a.z); a.tx = a.x; a.tz = a.z;
+      if (now > (a.greetAt || 0)) { a.greetAt = now + 25000; a.hold = now + 1800; a.pose = a.kind === 'dog' ? 3 : 1; broadcast(room, { t: 'afx', id: a.id, e: 'greet' }); continue; }
+      a.pose = 1; a.until = now + 1500; continue;
+    }
     if (now > a.until) {                                    // 다음 행동 고르기
       const q = Math.random();
       if (q < 0.42) { const ang = Math.random() * 6.28, rr = Math.random() * (a.kind === 'cat' ? 4 : 6); a.tx = a.hx + Math.cos(ang) * rr; a.tz = a.hz + Math.sin(ang) * rr; a.pose = 0; a.until = now + 9000; }
@@ -468,7 +538,7 @@ setInterval(() => {
   for (const room of rooms.values()) {
     if (!room.players.size) continue;
     for (const p of room.players.values()) if (p.ride) { const c = room.cars[p.ride.car], s = CARS.seatAt(c.x, c.z, c.ry, p.ride.seat, p.ride.car); p.x = s[0]; p.z = s[1]; p.ry = c.ry; p.y = (c.y || 0) + CARS.seatY(p.ride.car, p.ride.seat); p.st = 4; p.mv = 0; }
-    for (const c of room.cars) if (c.y > 0 && !c.driver && CARS.vinfo(c.id).fly) { c.y = Math.max(0, c.y - 16 * dt); c.sp = 0; c.pt = 0; }   // 주인 없는 드래곤은 천천히 내려앉아요
+    for (const c of room.cars) if (c.y > 0 && !c.driver && CARS.vinfo(c.id).fly) { c.y = Math.max(c.gy || 0, c.y - 16 * dt); c.sp = 0; c.pt = 0; }   // 주인 없는 드래곤은 천천히 내려앉아요
     stepAnimals(room, now, dt);
     for (let k = room.poops.length - 1; k >= 0; k--) if (now - room.poops[k].t > 8 * 60 * 1000) { broadcast(room, { t: 'poopdel', pid: room.poops[k].id }); room.poops.splice(k, 1); }
     const list = [...room.players.values()].map(p => [p.id, round2(p.x), round2(p.z), round2(p.ry), p.mv, round2(p.y || 0), p.st || 0]);
@@ -504,6 +574,7 @@ function shutdown() { for (const p of online.values()) if (p.acct && p.acct.dirt
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
 DB.init().then(mode => {
   console.log('계정 저장소: ' + (mode === 'pg' ? 'Postgres (DATABASE_URL)' : '파일 data/db.json — 임시 저장이에요. Render 무료 서버에서는 재시작하면 계정이 사라지니 DATABASE_URL을 설정하세요'));
+  DB.noteRecent(500).then(rows => { rows.reverse().forEach(r => NOTES.push({ id: r.id, x: r.x, from: r.a, rep: r.r, rb: new Set() })); if (rows.length) console.log('응원 쪽지 ' + rows.length + '개 불러옴'); }).catch(e => console.error('쪽지 불러오기 실패', e.message));
   server.listen(PORT, () => console.log('Healing Lounge 서버 시작: http://localhost:' + PORT));
 }).catch(e => { console.error('계정 저장소 연결 실패:', e.message); process.exit(1); });
 process.on('SIGTERM', () => { wss.clients.forEach(c => c.close()); server.close(() => process.exit(0)); });

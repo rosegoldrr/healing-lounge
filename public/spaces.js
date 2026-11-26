@@ -6,6 +6,7 @@
    ───────────────────────────────────────────────────────────── */
 (function (global) {
 'use strict';
+const TT = s => (global.LANG && global.LANG.t) ? global.LANG.t(s) : s;   // 간판 글자도 선택한 언어로
 
 function buildSpaces(THREE, scene, city, OPT) {
   const ZN = global.ZONES, Z = ZN.ZONES, TAU = Math.PI * 2;
@@ -90,7 +91,7 @@ function buildSpaces(THREE, scene, city, OPT) {
       Q.benches.push({ x: x + z.ox, z: zz + z.oz, ry, lx: x, lz: zz });
     };
     Q.gate = () => {
-      const [gx, gz] = z.gate, ry = Math.atan2(-gx, -gz), G = makeGate(g, gx, gz, ry, '#ffd9a8', '🌿 광장으로', '#ffd9a8');
+      const [gx, gz] = z.gate, ry = Math.atan2(-gx, -gz), G = makeGate(g, gx, gz, ry, '#ffd9a8', TT('🌿 광장으로'), '#ffd9a8');
       Q.gateObj = G; const c = Math.cos(ry), s = Math.sin(ry); [-2.0, 2.0].forEach(lx => Q.col(gx + c * lx, gz - s * lx, 0.5)); Q.upd.push(G.update);
     };
     Q.finish = () => { Q.insts.forEach(api => { const m = api.m; m.count = api.n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }); };

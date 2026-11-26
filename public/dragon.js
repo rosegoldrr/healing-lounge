@@ -52,13 +52,19 @@ window.DRG = (function () {
     });
     const tv = new THREE.Vector3(), fw = new THREE.Vector3();
     /* x,y,z 위치 · ry 방향 · pt 기울기 · air 공중 여부 · fire 불 뿜는 중 · show 보이기 */
-    D.update = function (x, y, z, ry, pt, air, fire, dt, show, spd) {
+    D.update = function (x, y, z, ry, pt, air, fire, dt, show, spd, roar) {
       D.root.visible = show && D.ready;
       if (D.ready && show) {
         D.root.position.set(x, y, z); D.root.rotation.set(0, ry, 0, 'YXZ'); D.holder.rotation.x = -pt * 0.6;
-        const want = air ? 'Fly' : (fire ? 'Breath' : (spd > 1 ? 'Walk' : 'Idle'));
+        const want = air ? 'Fly' : ((fire || roar > 0) ? 'Breath' : (spd > 1 ? 'Walk' : 'Idle'));
         if (want !== D.cur && D.act[want]) { const a = D.act[want], b = D.act[D.cur]; a.reset().setEffectiveWeight(1).play(); if (b) a.crossFadeFrom(b, 0.35, false); D.cur = want; }
         D.mixer.update(dt);
+        if (roar > 0 && D.head) {                    // 울부짖기: 목을 뒤로 젖히고 머리를 떨며 포효 (애니메이션이 매 프레임 덮어쓰므로 누적되지 않아요)
+          const q = new THREE.Quaternion(), ax = new THREE.Vector3(1, 0, 0), tt = performance.now() / 1000, sh = Math.sin(tt * 42) * 0.06 * roar;
+          let b = D.head; const chain = [];
+          for (let i = 0; i < 4 && b && b.isBone; i++) { chain.push(b); b = b.parent; }
+          chain.forEach((bn, i) => { q.setFromAxisAngle(ax, (i === 0 ? -0.55 : -0.22) * roar + (i === 0 ? sh : 0)); bn.quaternion.multiply(q); });
+        }
       }
       /* 불꽃: 누르는 동안 계속 뿜고, 떼면 바로 멈춤 */
       D.fireT += dt; D.smokeT = (D.smokeT || 0) + dt;

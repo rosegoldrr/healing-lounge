@@ -3,10 +3,11 @@
 const D = require('../public/daily.js');
 const ZN = require('../public/zones.js');
 
-function newSave() { return { nick: '', stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, gen: 0, orders: 0, hid: {}, hp: {}, hz: {}, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
+function newSave() { return { nick: '', stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, gen: 0, orders: 0, hid: {}, hp: {}, hz: {}, bond: {}, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
 function norm(s) {
   const r = Object.assign(newSave(), s || {});
   if (!Array.isArray(r.own)) r.own = [0];
+  if (!r.bond || typeof r.bond !== 'object') r.bond = {};
   if (!r.hid || typeof r.hid !== 'object') r.hid = {}; if (!r.hp || typeof r.hp !== 'object') r.hp = {}; if (!r.hz || typeof r.hz !== 'object') r.hz = {};
   if (!r.m || !r.m.list) r.m = newSave().m;
   if (r.equip && !r.own.includes(r.equip)) r.equip = 0;
@@ -16,7 +17,7 @@ function ensureDay(sv, day) {
   if (sv.m.day !== day) sv.m = { day, list: D.missionsFor(day), prog: {}, done: {}, vis: {} };
   return sv;
 }
-const pubState = sv => ({ stars: sv.stars, streak: sv.streak, best: sv.best, last: sv.last, stamp: sv.stamp, cards: sv.cards, own: sv.own, equip: sv.equip, orders: sv.orders || 0, hid: sv.hid || {},
+const pubState = sv => ({ adm: sv.adm ? 1 : 0, stars: sv.stars, streak: sv.streak, best: sv.best, last: sv.last, stamp: sv.stamp, cards: sv.cards, own: sv.own, equip: sv.equip, orders: sv.orders || 0, hid: sv.hid || {}, bond: sv.bond || {},
   m: { day: sv.m.day, list: sv.m.list, done: sv.m.done, prog: Object.fromEntries(Object.entries(sv.m.prog).map(([k, v]) => [k, Math.round(v * 10) / 10])) } });
 
 function checkin(sv, day) {
@@ -47,6 +48,7 @@ function claim(sv, day, id) {
 }
 function buy(sv, i) {
   i = Math.floor(i); if (!(i >= 1 && i <= 7) || sv.own.includes(i)) return null;
+  if (sv.adm) sv.stars = 99999999;
   if (sv.stars < D.ACC[i].p) return '✨ 이 부족해요. 출석과 미션으로 모아 보세요';
   sv.stars -= D.ACC[i].p; sv.own.push(i); sv.equip = i; return D.ACC[i].e + ' ' + D.ACC[i].n + ' 획득!';
 }
@@ -71,4 +73,14 @@ function hidden(sv, id, n) {
   sv.hp[id] = (sv.hp[id] || 0) + (n || 1); if (sv.hp[id] < def.n) return null;
   sv.hid[id] = 1; sv.stars += def.r; return '🕵️ 히든 미션 발견! "' + def.t + '" ✨ +' + def.r;
 }
-module.exports = { hidden, newSave, norm, ensureDay, pubState, checkin, claim, buy, progress, visit };
+/* 반려동물 친밀도: 쓰다듬기 +1, 간식 +3 → 레벨 1~5 */
+const BOND_AT = [0, 6, 20, 45, 90];
+const bondLv = xp => { let l = 1; for (let i = 1; i < BOND_AT.length; i++) if (xp >= BOND_AT[i]) l = i + 1; return l; };
+function bondAdd(sv, id, n) {
+  if (!sv.bond) sv.bond = {};
+  const before = sv.bond[id] || 0, lv0 = bondLv(before), xp = Math.min(9999, before + n), lv = bondLv(xp);
+  sv.bond[id] = xp;
+  let gift = 0; if (lv > lv0) { gift = lv * 8; sv.stars += gift; }
+  return { xp, lv, up: lv > lv0 ? 1 : 0, gift, next: lv < BOND_AT.length ? BOND_AT[lv] : 0 };
+}
+module.exports = { bondLv, bondAdd, hidden, newSave, norm, ensureDay, pubState, checkin, claim, buy, progress, visit };
