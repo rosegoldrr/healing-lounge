@@ -83,7 +83,7 @@ function tr(str){
   cache.set(str,out);
   return out;
 }
-function skipEl(el){var t=el&&el.nodeName;return t==='SCRIPT'||t==='STYLE'||t==='TEXTAREA'||t==='NOSCRIPT'||(el&&el.closest&&!!el.closest('#langbox'));}
+function skipEl(el){var t=el&&el.nodeName;if(el&&el.closest&&el.closest('[data-raw]'))return true;return t==='SCRIPT'||t==='STYLE'||t==='TEXTAREA'||t==='NOSCRIPT'||(el&&el.closest&&!!el.closest('#langbox'));}
 function doText(n){
   var el=n.parentNode;if(!el||skipEl(el)||skipEl(el.parentNode))return;
   var d=n.data, last=OUT.get(n);
@@ -188,7 +188,7 @@ function buildUI(){
     it.innerHTML=flagImg(L.f)+'<span></span><b>✓</b>';
     it.querySelector('span').textContent=L.n;
     
-    it.addEventListener('click',function(e){e.stopPropagation();box.classList.remove('open');setLang(L.c,true);});
+    it.addEventListener('click',function(e){e.stopPropagation();box.classList.remove('open');var was=cur;setLang(L.c,true);if(window.__inGame&&was!==L.c){setTimeout(function(){location.reload();},350);}});
     list.appendChild(it);
   });
   btn.addEventListener('click',function(e){e.stopPropagation();box.classList.toggle('open');});

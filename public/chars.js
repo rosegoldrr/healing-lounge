@@ -55,7 +55,8 @@ window.CHARS = (function () {
     });
     const holder = new THREE.Group(); holder.add(root); holder.scale.setScalar(SCALE);
     const mixer = new THREE.AnimationMixer(root), act = {};
-    ['Idle', 'Walk', 'Run', 'Jump', 'SitDown'].forEach(k => { if (clips[k]) { const a = mixer.clipAction(clips[k]); act[k] = a; if (k === 'SitDown') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; } } });
+    const ONCE = { SitDown: 1, StandUp: 0, PickUp: 0, Punch: 0, RecieveHit: 0, Roll: 0, SwordSlash: 0, Shoot_OneHanded: 0, Defeat: 1, Death: 1 };   // 한 번만 재생 (1 = 끝 자세 유지)
+    ['Idle', 'Walk', 'Run', 'Jump', 'Walk_Carry', 'Run_Carry'].concat(Object.keys(ONCE)).forEach(k => { if (clips[k]) { const a = mixer.clipAction(clips[k]); act[k] = a; if (k in ONCE) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = !!ONCE[k]; } } });
     act.Idle.play();
     holder.updateMatrixWorld(true);
     const top = new THREE.Box3().setFromObject(holder).max.y;
@@ -87,5 +88,6 @@ window.CHARS = (function () {
       if (!H) { P.hbase = null; P.hlast = {}; }
     }
   }
-  return { names: NAMES, count: NAMES.length, load, ready, make, play, SCALE };
+  const dur = (P, n) => (P.act[n] ? P.act[n].getClip().duration : 1);
+  return { names: NAMES, count: NAMES.length, load, ready, make, play, dur, SCALE };
 })();
