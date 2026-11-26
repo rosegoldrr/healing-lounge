@@ -68,10 +68,23 @@ window.CHARS = (function () {
       P.cur = name;
     }
     P.mixer.update(dt);
-    if (P.hand) {                                   // 운전대/핸들 잡는 팔 자세 (애니메이션 뒤에 덮어씀)
-      if (!P.bones) { P.bones = {}; P.holder.traverse(o => { if (o.isBone) P.bones[o.name] = o; }); P.q = new THREE.Quaternion(); P.ax = new THREE.Vector3(1, 0, 0); P.ay = new THREE.Vector3(0, 1, 0); P.az = new THREE.Vector3(0, 0, 1); }
-      const H = P.hand;
-      [['UpperArmL', H.ul], ['UpperArmR', H.ur], ['LowerArmL', H.ll], ['LowerArmR', H.lr]].forEach(([n, ang]) => { const b = P.bones[n]; if (!b || !ang) return; P.q.setFromAxisAngle(H.ax === 'z' ? P.az : H.ax === 'y' ? P.ay : P.ax, ang); b.quaternion.multiply(P.q); });
+    const ARM = ['UpperArmL', 'UpperArmR', 'LowerArmL', 'LowerArmR'];
+    if (P.hand || P.hbase) {                        // 운전대/핸들 잡는 팔 자세 (애니메이션 뒤에 덮어씀 — 누적되지 않게 기준 자세를 기억)
+      if (!P.bones) { P.bones = {}; P.holder.traverse(o => { if (o.isBone) P.bones[o.name] = o; }); P.q = new THREE.Quaternion(); P.ax = new THREE.Vector3(1, 0, 0); P.ay = new THREE.Vector3(0, 1, 0); P.az = new THREE.Vector3(0, 0, 1); P.hbase = null; P.hlast = {}; }
+      const H = P.hand, ang = H ? { UpperArmL: H.ul, UpperArmR: H.ur, LowerArmL: H.ll, LowerArmR: H.lr } : null;
+      if (!P.hbase) { P.hbase = {}; P.hlast = {}; }
+      ARM.forEach(n => {
+        const b = P.bones[n]; if (!b) return;
+        const last = P.hlast[n];
+        if (!last || !b.quaternion.equals(last)) { P.hbase[n] = (P.hbase[n] || new THREE.Quaternion()).copy(b.quaternion); }   // 애니메이션이 새로 쓴 자세
+        const base = P.hbase[n];
+        if (H && ang[n]) {
+          P.q.setFromAxisAngle(H.ax === 'z' ? P.az : H.ax === 'y' ? P.ay : P.ax, ang[n]);
+          b.quaternion.copy(base).multiply(P.q);
+          P.hlast[n] = (last || new THREE.Quaternion()).copy(b.quaternion);
+        } else { b.quaternion.copy(base); P.hlast[n] = (last || new THREE.Quaternion()).copy(b.quaternion); }
+      });
+      if (!H) { P.hbase = null; P.hlast = {}; }
     }
   }
   return { names: NAMES, count: NAMES.length, load, ready, make, play, SCALE };

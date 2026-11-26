@@ -152,7 +152,7 @@ function spawnPoint(room) {
 function leaveCar(room, me) {
   const c = room.cars[me.ride.car], seat = me.ride.seat, sd = Math.sin(c.ry), cd = Math.cos(c.ry);
   const vi = CARS.vinfo(c.id), q = seat ? vi.p : vi.d, side = (q[0] ? Math.sign(q[0]) : 1) * (vi.k === 'dragon' ? 4.2 : 2.4);
-  me.x = c.x + cd * side; me.z = c.z - sd * side; const r = Math.hypot(me.x, me.z); if (r > CFG.worldRadius) { me.x *= CFG.worldRadius / r; me.z *= CFG.worldRadius / r; }
+  me.x = c.x + cd * side; me.z = c.z - sd * side; { const q = CARS.clamp(me.x, me.z, CFG.worldRadius, 0, 12); me.x = q[0]; me.z = q[1]; }
   me.y = 0; me.st = 0; me.ride = null; me.lastT = Date.now(); me.mv = 0;
   if (seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } else c.eng = 0; } else c.pass = 0;
   send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
@@ -243,8 +243,7 @@ wss.on('connection', (ws, req) => {
       const dist = Math.hypot(dx, dz), maxD = CFG.maxSpeed * dt;
       if (dist > maxD) { dx *= maxD / dist; dz *= maxD / dist; }
       let nx = me.x + dx, nz = me.z + dz;
-      const r = Math.hypot(nx, nz);
-      if (r > room.R) { nx *= room.R / r; nz *= room.R / r; }
+      { const q = CARS.clamp(nx, nz, room.R, 0, 12); nx = q[0]; nz = q[1]; }
       me.mv = Math.hypot(nx - me.x, nz - me.z) / dt > 0.4 ? (Math.hypot(nx - me.x, nz - me.z) / dt > 6.5 ? 2 : 1) : 0;
       const stepLen = Math.hypot(nx - me.x, nz - me.z);
       if (me.acct) {
@@ -328,10 +327,10 @@ wss.on('connection', (ws, req) => {
       if (!me.ride || me.ride.seat !== 0) return;
       const c = room.cars[me.ride.car], dt = clamp((now - (me.lastDrive || now - 100)) / 1000, 0.02, 0.6); me.lastDrive = now;
       let nx = num(m.x, c.x), nz = num(m.z, c.z);
-      const fl = CARS.vinfo(c.id).fly, d = Math.hypot(nx - c.x, nz - c.z), maxD = (fl ? 60 : 34) * dt + 0.5;
+      const fl = CARS.vinfo(c.id).fly, d = Math.hypot(nx - c.x, nz - c.z), maxD = (fl ? 70 : 48) * Math.max(dt, 0.12) + 0.8;
       if (d > maxD) { nx = c.x + (nx - c.x) * maxD / d; nz = c.z + (nz - c.z) * maxD / d; send(ws, { t: 'cfix', x: round2(nx), z: round2(nz) }); }
-      const r = Math.hypot(nx, nz); if (r > CFG.worldRadius) { nx *= CFG.worldRadius / r; nz *= CFG.worldRadius / r; }
-      c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, fl ? 55 : 34);
+      { const q = fl ? CARS.clamp(nx, nz, CFG.worldRadius, -25, 40) : CARS.clamp(nx, nz, CFG.worldRadius, 0.6, 7.6); nx = q[0]; nz = q[1]; }
+      c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, fl ? 55 : 42);
       if (fl) { c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = 0; }
       return;
     }

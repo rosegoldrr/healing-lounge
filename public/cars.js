@@ -12,7 +12,7 @@
   const SEAT_Y = 0.62;
   /* 좌석 0(운전석) · 1(동승석)의 월드 좌표 */
   /* 탈것 정보: k 종류(car/bike/dragon) · d 운전석 · p 동승석 [옆(+왼쪽), 앞뒤, 높이] · rs 탑승자 크기 · sd 내리는 쪽 · eng 엔진 종류 */
-  const DEF = { k: 'car', d: [-0.5, -0.15, 0.62], p: [0.5, -0.15, 0.62], rs: 1, sd: -1, eng: 'i4' };
+  const DEF = { k: 'car', d: [0.5, -0.15, 0.62], p: [-0.5, -0.15, 0.62], rs: 1, sd: 1, eng: 'i4' };   // 왼쪽 운전석(한국식)
   const VINFO = {
     0: { eng: 'i4' }, 1: { eng: 'v6' }, 2: { eng: 'v8' }, 3: { eng: 'i4' }, 4: { eng: 'i4' }, 5: { eng: 'v6' }, 6: { eng: 'v6' }, 7: { eng: 'diesel' }, 8: { eng: 'diesel' }, 9: { eng: 'diesel' },
     10: { d: [0.42, 0.1, 0.34], p: [-0.42, 0.1, 0.34], rs: 0.62, sd: 1, eng: 'i6', fx: 'M4' },
@@ -41,6 +41,29 @@
     A('cat', 0, '치즈', 11, 100), A('cat', 1, '먹물', 20, 200), A('cat', 2, '구름', 34, 335), A('cat', 3, '보리', 48, 20), A('cat', 0, '나비', 56, 140), A('cat', 4, '모찌', 40, 250),
     A('dog', 0, '콩이', 16, 30), A('dog', 1, '초코', 28, 150), A('dog', 2, '두부', 44, 70), A('dog', 3, '보름', 55, 300), A('dog', 0, '호두', 22, 262), A('dog', 4, '멍이', 36, 190)
   ];
-  const API = { WORLD_R, COLORS, SPAWNS, N: SPAWNS.length, SEAT_Y, seatAt, seatY, vinfo, BINS, ANIMALS };
+  /* 광장 밖으로 뻗은 4개 대로 = 드라이빙 코스. 걷기·운전 가능 영역 = 광장 원 + 대로 4개
+     45° = 10km 코스(유턴 2.5/5/7.5/10km), 315° = 500m 코스(유턴 250/500m), 나머지 두 대로는 300m */
+  const AVD = [45, 135, 225, 315];
+  const COURSES = { 45: { len: 10000, uts: [2500, 5000, 7500, 10000] }, 135: { len: 300, uts: [] }, 225: { len: 300, uts: [] }, 315: { len: 500, uts: [250, 500] } };
+  const BAY_L = 30, BAY_X = 12.6;                       // 유턴 구간: 앞뒤 30m, 도로폭이 12.6m 더 넓어져요
+  const tMax = c => c.len + (c.uts.indexOf(c.len) >= 0 ? BAY_L : 0);
+  const widthAt = (c, t, H) => { let w = H; for (const u of c.uts) { const k = Math.max(0, Math.min(1, (BAY_L - Math.abs(t - u)) / 10)); w = Math.max(w, H + BAY_X * k); } return w; };
+  function clampW(x, z, R, m, hw) {
+    m = m || 0; const lim = R - m, r = Math.hypot(x, z);
+    if (r <= lim) return [x, z];
+    let best = [x * lim / r, z * lim / r], bd = r - lim;
+    if (R === WORLD_R) {
+      const H = hw || 7;
+      for (const d of AVD) {
+        const c = COURSES[d], ux = Math.cos(d * D2R), uz = Math.sin(d * D2R), nx = -uz, nz = ux;
+        const t = x * ux + z * uz, sv = x * nx + z * nz;
+        const tc = Math.max(0, Math.min(tMax(c) - m, t)), W = widthAt(c, tc, H), sc = Math.max(-W, Math.min(W, sv));
+        const cx = ux * tc + nx * sc, cz = uz * tc + nz * sc, dd = Math.hypot(cx - x, cz - z);
+        if (dd < bd) { bd = dd; best = [cx, cz]; }
+      }
+    }
+    return best;
+  }
+  const API = { clamp: clampW, COURSES, AVD, BAY_L, BAY_X, tMax, widthAt, WORLD_R, COLORS, SPAWNS, N: SPAWNS.length, SEAT_Y, seatAt, seatY, vinfo, BINS, ANIMALS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.CARS = API;
 })(typeof window !== 'undefined' ? window : globalThis);

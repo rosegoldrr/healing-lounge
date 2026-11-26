@@ -1156,7 +1156,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   const outMat = new THREE.MeshBasicMaterial({ color: '#3b2a3e', side: THREE.BackSide });
   outMat.onBeforeCompile = function (sh) { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed=position+normalize(normal)*0.022;'); };
   city.outline = function (m) { const o = new THREE.Mesh(m.geometry, outMat); o.castShadow = false; o.receiveShadow = false; m.add(o); return o; };
-  city.toon = toonMat;
+  city.toon = toonMat; city.groundTexR = groundTexR;
   city.setPlayer = function (x, y, z) {
     playerU.value.set(x, y, z, 0.8);
     sunL.target.position.set(Math.round(x / 2) * 2, 0, Math.round(z / 2) * 2); sunL.target.updateMatrixWorld();
