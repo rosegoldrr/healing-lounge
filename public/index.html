@@ -172,6 +172,7 @@
 <div id="help" class="glass">WASD 이동 · Shift 달리기 · Space 점프 · C 앉기 · Z 눕기 · E 상호작용 · V 시야각 · 드래그 시점</div>
 <div id="carui" class="glass"><div id="cttl">🚗 내 차</div><div id="cpal"></div>
   <button id="cEng">🔑 <span id="engname">시동 켜기</span> <i>X</i></button><button id="cFire" style="display:none">🔥 불 뿜기 <i>F</i></button><button id="cDown" style="display:none">⬇ 하강 <i>C</i></button><button id="cCruise">🧭 크루즈 <i>Q</i></button><button id="cLight">💡 라이트 <i>L</i></button><button id="cHorn">📣 경적 <i>H</i></button><button id="cRadio">📻 <span id="rname">꺼짐</span> <i>R</i></button><button id="cExit">🚪 내리기 <i>E</i></button></div>
+<div id="bver" style="position:fixed;left:6px;bottom:2px;font-size:10px;opacity:.55;color:#fff;z-index:3;pointer-events:none;text-shadow:0 0 3px #000">build 1126-c · course</div>
 <div id="cdist" class="glass" style="position:fixed;left:50%;top:104px;transform:translateX(-50%);padding:5px 14px;font-size:14px;font-weight:800;display:none;z-index:5;pointer-events:none"></div>
 <div id="spdo" class="glass"><b id="kmh">0</b><span>km/h</span></div>
 <div id="chatlog"></div>
@@ -430,7 +431,7 @@ function animateAvatar(a,mv,dt,t,st,y){
     if(vi.k==='dragon'){T.al=T.ar=-1.0;T.az=0.12;T.rotX=0.12;}
     U.stv=stv;}
   U.rs=(U.rs||1)+(rsT-(U.rs||1))*(1-Math.exp(-14*dt));U.rig.scale.setScalar(U.rs);
-  if(U.pm){const hv=window.__hand||null;U.pm.hand=rv&&!drvSeat&&vi.k==='bike'?(hv||{ax:'z',ul:-0.8,ur:-0.8,ll:-0.45,lr:-0.45}):rv&&drvSeat&&vi.k!=='dragon'?(hv||(vi.k==='bike'?{ax:'z',ul:-0.95,ur:-0.95,ll:-0.1,lr:-0.1}:{ax:'z',ul:-0.8,ur:-0.8,ll:-0.2,lr:-0.2})):null;}
+  if(U.pm){const hv=window.__hand||null;U.pm.hand=rv&&!drvSeat&&vi.k==='bike'?(hv||{ax:'z',ul:-0.8,ur:0.8,ll:-0.45,lr:0.45}):rv&&drvSeat&&vi.k!=='dragon'?(hv||(vi.k==='bike'?{ax:'z',ul:-0.95,ur:0.95,ll:-0.1,lr:0.1}:{ax:'z',ul:-0.8,ur:0.8,ll:-0.2,lr:0.2})):null;}
   rideWheel(a,U,rv&&drvSeat?vi:null,U.stv||0);
   T.lab+=U.labLift||0;let extraY=0,rz=0;const nowMs=performance.now();
   if(U.emo){
