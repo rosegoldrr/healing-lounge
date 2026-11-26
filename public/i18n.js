@@ -163,7 +163,7 @@ function place(){
 function buildUI(){
   var st=document.createElement('style');
   st.textContent=
-   '#langbox{position:fixed;top:14px;right:14px;z-index:60;font-family:inherit;touch-action:auto}'+
+   '#langbox{position:fixed;top:14px;right:14px;z-index:100000;font-family:inherit;touch-action:auto}'+
    '#langbox .lb{display:flex;align-items:center;gap:6px;height:46px;padding:0 12px;border-radius:23px;border:1px solid rgba(255,255,255,.4);background:rgba(255,255,255,.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;cursor:pointer;font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.18)}'+
    '#langbox .lb img{display:block;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.18)}'+
    '#langbox .lb .ar{font-size:10px;opacity:.85}'+

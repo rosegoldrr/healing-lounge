@@ -12,7 +12,7 @@
   .glass{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.34);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:16px;text-shadow:0 1px 4px rgba(0,0,0,.35)}
   #hud{position:fixed;left:14px;top:14px;padding:10px 14px;font-size:13px;line-height:1.5;pointer-events:none;display:none}
   #hud b{font-size:15px}
-  #status{position:fixed;left:50%;top:14px;transform:translateX(-50%);padding:8px 16px;font-size:13px;display:none;pointer-events:none;text-align:center}
+  #status{z-index:25;position:fixed;left:50%;top:14px;transform:translateX(-50%);padding:8px 16px;font-size:13px;display:none;pointer-events:none;text-align:center}
   #login{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at 50% 55%,rgba(36,26,70,.50),rgba(36,26,70,.18))}
   #card{width:min(420px,100%);padding:26px;text-align:center}
   #card h1{margin:0 0 6px;font-size:26px}
@@ -252,7 +252,14 @@ const $=s=>document.querySelector(s);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const isTouch=(matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window);
 if(isTouch)document.body.classList.add('touch');
-if(typeof THREE==='undefined'){$('#msg').textContent='3D 화면을 불러오지 못했어요. 새로고침해 주세요.';return;}
+if(typeof THREE==='undefined'||typeof CARS==='undefined'||typeof CHARS==='undefined'||!THREE.GLTFLoader){
+  let n=0;try{n=+(sessionStorage.getItem('lounge.rl')||0);}catch(_){}
+  if(n<3){try{sessionStorage.setItem('lounge.rl',String(n+1));}catch(_){}
+    $('#msg').textContent='3D 화면을 다시 불러오는 중이에요…';
+    setTimeout(()=>{location.replace(location.pathname+(location.search?location.search+'&':'?')+'r='+Date.now());},1200+n*1500);return;}
+  try{sessionStorage.removeItem('lounge.rl');}catch(_){}
+  $('#msg').textContent='3D 화면을 불러오지 못했어요. 새로고침해 주세요.';return;}
+try{sessionStorage.removeItem('lounge.rl');}catch(_){}
 
 /* ───── 3D 장면 ───── */
 const canvas=$('#c');
@@ -407,7 +414,7 @@ function animateAvatar(a,mv,dt,t,st,y){
   const U=a.userData;if(U.up){U.up=false;upgradeAvatar(a);}
   const P=U.P,T={rigY:0,rotX:0,rigZ:0,tl:0,tr:0,kl:0,kr:0,al:0,ar:0,az:0.06,lab:2.35};
   const air=y>0.14&&st===ST.STAND;
-  if(st===ST.SIT||st===ST.RIDE){T.rigY=U.pm?-0.05:-0.47*(U.sk||1);T.tl=T.tr=-1.5;T.kl=T.kr=1.45;T.al=T.ar=st===ST.RIDE?-1.15:-0.5;T.lab=1.95;T.az=0.12;}
+  if(st===ST.SIT||st===ST.RIDE){T.rigY=U.pm?(st===ST.RIDE?-0.42:-0.05):-0.47*(U.sk||1);T.tl=T.tr=-1.5;T.kl=T.kr=1.45;T.al=T.ar=st===ST.RIDE?-1.15:-0.5;T.lab=1.95;T.az=0.12;}
   else if(st===ST.LIE){T.rotX=-Math.PI/2;T.rigY=0.42;T.rigZ=0.9;T.az=0.22;T.lab=1.0;}
   else if(st===ST.CLIMB){const c=t*7.5+y*3.2;T.rotX=0.1;T.tl=-0.9+Math.sin(c)*0.6;T.tr=-0.9-Math.sin(c)*0.6;T.kl=1.1;T.kr=1.1;T.al=-2.5+Math.sin(c)*0.5;T.ar=-2.5-Math.sin(c)*0.5;T.az=0.12;}
   else if(air){T.tl=-0.7;T.tr=0.25;T.kl=0.95;T.kr=0.5;T.al=T.ar=-2.5;T.az=0.35;}
@@ -995,7 +1002,7 @@ function stepFly(dt,c){
 function stepDrive(dt,c){
   if(CARS.vinfo(c.id).fly)return stepFly(dt,c);
   const D=drv;
-  let thr=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y;thr=clamp(thr,-1,1);if(!c.eng)thr=0;D.thr=Math.max(0,thr);
+  let thr=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y;thr=clamp(thr,-1,1);if(!c.eng&&thr>0.2&&performance.now()-(c.autoT||0)>800){c.autoT=performance.now();c.eng=1;c.engAt=performance.now();send({t:'carset',e:1});}if(!c.eng)thr=0;D.thr=Math.max(0,thr);
   let sx=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x;sx=clamp(sx,-1,1);
   const hb=!!keys.Space||touchHB,boost=!!(keys.ShiftLeft||keys.ShiftRight)||(joy.id!==null&&Math.hypot(joy.x,joy.y)>0.93);
   D.steer+=(sx-D.steer)*(1-Math.exp(-9*dt));
