@@ -3,7 +3,7 @@
 const D = require('../public/daily.js');
 const ZN = require('../public/zones.js');
 
-function newSave() { return { stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, gen: 0, orders: 0, hid: {}, hp: {}, hz: {}, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
+function newSave() { return { nick: '', stars: 0, streak: 0, best: 0, last: 0, stamp: 0, cards: 0, own: [0], equip: 0, gen: 0, orders: 0, hid: {}, hp: {}, hz: {}, m: { day: 0, list: [], prog: {}, done: {}, vis: {} } }; }
 function norm(s) {
   const r = Object.assign(newSave(), s || {});
   if (!Array.isArray(r.own)) r.own = [0];

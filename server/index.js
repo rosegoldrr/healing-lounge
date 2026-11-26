@@ -206,13 +206,15 @@ wss.on('connection', (ws, req) => {
         const gIn = Math.floor(num(m.gen, -1)), gOk = gIn >= 0 && gIn <= 52, gen = acct ? (gOk ? gIn : (acct.sv.gen || 0)) : (gOk ? gIn : 0);
         if (acct && gOk && acct.sv.gen !== gIn) { acct.sv.gen = gIn; acct.dirty = true; }
         const sp = spawnPoint(room), t2 = Date.now();
-        me = { id: nextId++, ws, name: cleanName(m.name), hue: Math.floor(num(m.hue, Math.random() * 360)) % 360, gen, ac: acct ? acct.sv.equip : 0,
+        let nm = cleanName(m.name);
+        if (acct) { if (acct.sv.nick) nm = acct.sv.nick; else { acct.sv.nick = nm; acct.dirty = true; } }   // 계정 닉네임은 처음 한 번만 정할 수 있어요
+        me = { id: nextId++, ws, name: nm, hue: Math.floor(num(m.hue, Math.random() * 360)) % 360, gen, ac: acct ? acct.sv.equip : 0,
                x: sp.x, z: sp.z, y: 0, st: 0, ride: null, ry: 0, mv: 0, lastT: t2, lastInput: t2, bags: 0, clean: 0, acct };
         if (acct) online.set(acct.id, me);
         room.players.set(me.id, me);
         send(ws, Object.assign({ t: 'welcome', id: me.id, you: pub(me), players: [...room.players.values()].filter(p => p !== me).map(pub),
                    cfg: { tickHz: CFG.tickHz, worldRadius: room.R, maxSpeed: CFG.maxSpeed }, now: Date.now(), zone: room.id,
-                   acct: acct ? { username: acct.username, s: ACCT.pubState(acct.sv) } : null }, kstDay(), roomState(room)));
+                   acct: acct ? { username: acct.username, nick: acct.sv.nick, s: ACCT.pubState(acct.sv) } : null }, kstDay(), roomState(room)));
         broadcast(room, { t: 'join', p: pub(me) }, me.id);
       })().catch(e => { console.error('join 오류', e.message); try { ws.close(); } catch (_) {} });
       return;

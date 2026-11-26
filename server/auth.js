@@ -78,11 +78,11 @@ async function handle(kind, body, req) {                      // 결과: {code, 
     const ok = u ? await checkPw(password, u.pass) : (await scrypt('x', Buffer.alloc(16)), false);   // 없는 아이디도 같은 시간이 걸리게
     if (!ok) return { code: 401, json: { ok: false, err: '아이디 또는 비밀번호가 맞지 않아요' } };
     DB.touchLogin(u.id).catch(() => {});
-    return { code: 200, json: { ok: true, token: makeToken(u), username: u.username } };
+    return { code: 200, json: { ok: true, token: makeToken(u), username: u.username, nick: (u.save && u.save.nick) || '' } };
   }
   if (kind === 'me') {
     const u = await verifyToken(body.token); if (!u) return { code: 401, json: { ok: false } };
-    return { code: 200, json: { ok: true, username: u.username, hasEmail: !!u.email } };
+    return { code: 200, json: { ok: true, username: u.username, hasEmail: !!u.email, nick: (u.save && u.save.nick) || '' } };
   }
   if (kind === 'forgot') {                                    // 비밀번호 찾기: 메일로 재설정 링크 (가입 여부는 알려주지 않아요)
     const email = normEmail(body.email), okMsg = { code: 200, json: { ok: true } };

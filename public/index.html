@@ -179,7 +179,7 @@
 <div id="emobar" class="glass"></div>
 <div class="tbtn" id="bChat" style="top:62px">💬</div><div class="tbtn" id="bEmo" style="top:116px">😊</div><div class="tbtn" id="bView" style="top:170px">🔭</div>
 <div id="joy"><div id="knob"></div></div>
-<div id="acts"><div class="ab big" id="bJump">점프</div><div class="col"><div class="ab" id="bG" style="display:none">간식</div><div class="ab" id="bF" style="display:none">산책</div><div class="ab" id="bE">상호<br>작용</div><div style="display:flex;gap:10px"><div class="ab" id="bLie">눕기</div><div class="ab" id="bSit">앉기</div></div></div></div>
+<div id="acts"><div class="ab big" id="bJump">점프</div><div class="col"><div class="ab" id="bG" style="display:none">간식</div><div class="ab" id="bF" style="display:none">산책</div><div class="ab" id="bE">상호작용</div><div style="display:flex;gap:10px"><div class="ab" id="bLie">눕기</div><div class="ab" id="bSit">앉기</div></div></div></div>
 
 <div id="nlabs"></div><div id="fade"></div><div id="zbanner"><b id="zbt"></b><span id="zbs"></span></div>
 <div id="sbtn" class="glass" title="소리 끄기 (M)">🔊</div>
@@ -243,6 +243,8 @@
 <script src="/zones.js"></script>
 <script src="/daily.js"></script>
 <script src="/spaces.js"></script>
+<script src="/i18n-data.js"></script>
+<script src="/i18n.js"></script>
 <script>
 (function(){
 'use strict';
@@ -499,7 +501,7 @@ function onMsg(m){
   if(m.t==='welcome'){
     joined=true;myId=m.id;cfg=m.cfg||cfg;
     if(m.now)srvOff=m.now-Date.now();
-    acct=m.acct?{username:m.acct.username}:null;sv=m.acct?m.acct.s:blankSv();lastAc=sv.equip;
+    acct=m.acct?{username:m.acct.username}:null;if(m.acct&&m.acct.nick)lockName(m.acct.nick);sv=m.acct?m.acct.s:blankSv();lastAc=sv.equip;
     zone='plaza';OX=OZ=0;S.setZone('plaza');scene.fog.near=55;scene.fog.far=300;$('#hudtitle').textContent='🌿 Healing Lounge';
     resetMe();me.x=m.you.x;me.z=m.you.z;me.ry=0;S.resolve(me,0.38);me.name=m.you.name;me.g=makeAvatar(m.you.name,m.you.hue,m.you.ac,m.you.gen);if(genSel<0)paintGen(m.you.gen||0);document.body.classList.add('in');
     m.players.forEach(addOther);initWorld(m);fadeIn();afterJoin();
@@ -1158,7 +1160,7 @@ let acct=null,lastAc=0;
 const blankSv=()=>({stars:0,streak:0,best:0,last:0,stamp:0,cards:0,own:[0],equip:0,m:{day:0,list:[],prog:{},done:{},vis:{}}});
 let sv=blankSv(),dailyOpen=false,dTab='in';
 const dayNow=()=>Math.floor((Date.now()+srvOff+32400000)/86400000);
-const dateStr=()=>{const d=new Date(dayNow()*86400000);return (d.getUTCMonth()+1)+'월 '+d.getUTCDate()+'일';};
+const dateStr=()=>{const d=new Date(dayNow()*86400000);const L=window.LANG&&LANG.get();if(L&&L!=='ko'){try{const h=LANG.list.filter(x=>x.c===L)[0].h;return d.toLocaleDateString(h,{month:'long',day:'numeric',timeZone:'UTC'});}catch(e){}}return (d.getUTCMonth()+1)+'월 '+d.getUTCDate()+'일';};
 const recZone=d=>window.DAILY.recZone(d);
 const mdef=id=>window.DAILY.mdef(id,sv.m.day||dayNow());
 function ensureMissions(){S.setRecommended(recZone(dayNow()));}
@@ -1304,7 +1306,7 @@ if(genSel>0)CHARS.load(genSel);
 let authToken='',authUser='',amode='login',hasEmail=true,resetTok='';
 try{authToken=localStorage.getItem('hl_token')||'';authUser=localStorage.getItem('hl_user')||'';}catch(_){}
 async function api(kind,body){try{const r=await fetch('/api/auth/'+kind,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return await r.json();}catch(_){return {ok:false,err:'서버에 연결하지 못했어요. 잠시 후 다시 해 주세요',net:true};}}
-function setAuth(tok,user){authToken=tok||'';authUser=user||'';try{if(tok){localStorage.setItem('hl_token',tok);localStorage.setItem('hl_user',user);}else{localStorage.removeItem('hl_token');localStorage.removeItem('hl_user');}}catch(_){}refreshLoginUI();}
+function setAuth(tok,user){if(!tok)try{lockName('');}catch(_){}authToken=tok||'';authUser=user||'';try{if(tok){localStorage.setItem('hl_token',tok);localStorage.setItem('hl_user',user);}else{localStorage.removeItem('hl_token');localStorage.removeItem('hl_user');}}catch(_){}refreshLoginUI();}
 function refreshLoginUI(){
   const on=!!authToken;
   $('#acctbar').style.display=on?'block':'none';$('#authlinks').style.display=on?'none':'block';
@@ -1342,21 +1344,24 @@ async function submitAuth(){
   const r=await api(amode,{username:u,password:pw,email:em});done();
   if(!r.ok){$('#aerr').textContent=r.err||'실패했어요';return;}
   hasEmail=amode==='signup'||!!r.hasEmail;setAuth(r.token,r.username);hideAuth();$('#msg').textContent=amode==='signup'?'가입 완료! 이제 입장하면 ⭐ 별을 모을 수 있어요 🌿':'어서 와요, '+r.username+' 님 🌿';
-  if(amode==='login')api('me',{token:r.token}).then(q=>{if(q&&q.ok){hasEmail=!!q.hasEmail;refreshLoginUI();}});
+  lockName(r.nick||'');if(amode==='login')api('me',{token:r.token}).then(q=>{if(q&&q.ok){hasEmail=!!q.hasEmail;refreshLoginUI();}});
 }
+let lockedNick='';
+function lockName(n){lockedNick=n||'';const el=$('#name');if(lockedNick){el.value=lockedNick;el.readOnly=true;el.style.opacity='.75';el.title='한 번 정한 닉네임은 바꿀 수 없어요';}else{el.readOnly=false;el.style.opacity='';el.title='';}}
 function enter(){
+  if(lockedNick)$('#name').value=lockedNick;
   wantName=$('#name').value.trim();wantHue=parseInt(hueEl.value,10)||0;
   try{localStorage.setItem('lounge_name',wantName);localStorage.setItem('lounge_hue',String(wantHue));}catch(_){}
   $('#go').disabled=true;$('#msg').textContent='접속하는 중…';closedByUs=false;retry=0;connect();
 }
 $('#aLogin').addEventListener('click',()=>showAuth('login'));$('#aSignup').addEventListener('click',()=>showAuth('signup'));
 $('#aDel').addEventListener('click',()=>showAuth('del'));$('#aMail').addEventListener('click',()=>showAuth('setemail'));$('#aforgot').addEventListener('click',()=>showAuth('forgot'));$('#aback').addEventListener('click',hideAuth);
-$('#aLogout').addEventListener('click',()=>{setAuth('','');$('#msg').textContent='로그아웃했어요';});
+$('#aLogout').addEventListener('click',()=>{lockName('');setAuth('','');$('#msg').textContent='로그아웃했어요';});
 $('#atabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)showAuth(b.dataset.m);});
 $('#asub').addEventListener('click',submitAuth);
 ['au','ae','ap','ap2'].forEach(id=>$('#'+id).addEventListener('keydown',e=>{if(e.key==='Enter')submitAuth();}));
 refreshLoginUI();
-if(authToken)api('me',{token:authToken}).then(r=>{if(r&&r.ok===false&&!r.net){setAuth('','');}else if(r&&r.ok){hasEmail=!!r.hasEmail;setAuth(authToken,r.username);}});
+if(authToken)api('me',{token:authToken}).then(r=>{if(r&&r.ok===false&&!r.net){setAuth('','');}else if(r&&r.ok){hasEmail=!!r.hasEmail;setAuth(authToken,r.username);lockName(r.nick||'');}});
 try{const rt=new URLSearchParams(location.search).get('reset');if(rt){resetTok=rt;showAuth('reset');}}catch(_){}
 try{if(sessionStorage.getItem('hl_open_auth')){sessionStorage.removeItem('hl_open_auth');if(!authToken)showAuth('login');}}catch(_){}
 $('#go').addEventListener('click',enter);

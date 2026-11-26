@@ -836,7 +836,9 @@ function buildCity(THREE, scene, renderer, OPT) {
     { n: 'M4W', body: ['Body'], len: 4.8, cols: { Windows: '#2a3340' } }, { n: 'M4GT3', body: ['Body'], len: 4.9, cols: { Windows: '#2a3340' } }, { n: 'S1000RR', body: ['Body'], len: 2.1, cols: { Windows: '#9fd8ee', Lights: '#fff1b0' } },
     { n: 'F40', body: ['Body'], len: 4.4, cols: { Windows: '#2a3340' } }, { n: 'Countach', body: ['Body'], len: 4.5, cols: { Windows: '#2a3340' } },
     { n: 'Centenario', body: ['Body'], len: 4.7, cols: { Windows: '#2a3340' } }, { n: 'LaFerrari', body: ['Body'], len: 4.7, cols: { Windows: '#2a3340' } },
-    { n: 'dragon', dragon: 1, body: [] }
+    { n: 'dragon', dragon: 1, body: [] },
+    { n: 'S1000RR', body: ['Body'], len: 2.1, cols: { Cc9a23a: '#d9a090', Windows: '#9fd8ee', Lights: '#fff1b0' } },
+    { n: 'M4W', body: ['Body'], len: 4.8, cols: { Windows: '#2a3340' } }
   ];
   const carParts = [], pal = CARS.COLORS, tc = new THREE.Color(), carState = [], lastCol = [];   // carParts[i] = [{m, body}]
   function parseVeh(obj, mtl) {
