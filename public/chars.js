@@ -26,7 +26,7 @@ window.CHARS = (function () {
     const done = () => { if (--n) return; const w = waits[i]; delete waits[i]; w.forEach(f => f()); };
     loadAnim(done);
     loader.load('/models/chars/' + (i === RIDER ? 3 : i) + '.glb', g => { cache[i] = g; done(); }, undefined, () => { delete waits[i]; });
-    if (i === RIDER) loader.load('/models/chars/rider.glb?v=3', g => { riderSrc = g; riderTried = true; done(); }, undefined, () => { riderSrc = null; riderTried = true; done(); });   // 운영자 전용 3D 모델(없으면 기본 라이더 복장)
+    if (i === RIDER) loader.load('/models/chars/rider.glb?v=4', g => { riderSrc = g; riderTried = true; done(); }, undefined, () => { riderSrc = null; riderTried = true; done(); });   // 운영자 전용 3D 모델(없으면 기본 라이더 복장)
   }
   const ready = i => !!(cache[i] && clips && (i !== RIDER || riderTried));
 
@@ -110,7 +110,8 @@ window.CHARS = (function () {
     if (!T.CC_Base_Hip || !T.CC_Base_Pelvis || !T.CC_Base_L_Foot) return null;
     tex.anisotropy = 4;
     rg.traverse(o => { if (o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = true; o.material = toon(new THREE.Color('#ffffff'), { skinning: true, map: tex }); } });
-    const F = 3.13 / 1.6975 * (window.__rs || 1); rg.scale.setScalar(F);          // 키만 게임 캐릭터에 맞추고 비율은 실제 사람 그대로
+    const H = (() => { const bb = new THREE.Box3().setFromObject(rg), z = new V(); bb.getSize(z); return z.y || 1.7; })();
+    const F = 3.13 / H * (window.__rs || 1); rg.scale.setScalar(F);          // 키만 게임 캐릭터에 맞추고 비율은 실제 사람 그대로
     root.add(rg); olds.forEach(o => { if (o.parent) o.parent.remove(o); });
     root.updateMatrixWorld(true);
     {   // 후디 밑단이 다리 뼈에 끌려 늘어나는 것 방지: 허리~골반 높이의 정점은 다리 영향을 줄이고 골반으로 옮김
@@ -120,7 +121,7 @@ window.CHARS = (function () {
         const g = sk0.geometry, P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight, v = new V();
         for (let k = 0; k < P.count; k++) {
           v.fromBufferAttribute(P, k).applyMatrix4(sk0.matrixWorld); root.worldToLocal(v); const y = v.y / F;
-          const f = Math.max(0, Math.min(1, (0.9 - y) / 0.08)); if (f >= 1) continue;
+          const f = Math.max(0, Math.min(1, (0.53 * H - y) / (0.047 * H))); if (f >= 1) continue;
           let move = 0, ps = -1, small = 0;
           for (let j = 0; j < 4; j++) { const ji = SI.array[k * 4 + j], w = SW.array[k * 4 + j]; if (ji === pel) ps = j; if (w < SW.array[k * 4 + small]) small = j; if (legs.has(ji) && w > 0) { move += w * (1 - f); SW.array[k * 4 + j] = w * f; } }
           if (move > 0) { if (ps < 0) { ps = small; SI.array[k * 4 + ps] = pel; SW.array[k * 4 + ps] = 0; } SW.array[k * 4 + ps] += move; }
