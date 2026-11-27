@@ -113,19 +113,35 @@ window.CHARS = (function () {
     const F = 3.13 / 1.6975 * (window.__rs || 1); rg.scale.setScalar(F);          // 키만 게임 캐릭터에 맞추고 비율은 실제 사람 그대로
     root.add(rg); olds.forEach(o => { if (o.parent) o.parent.remove(o); });
     root.updateMatrixWorld(true);
-    const rq = new Q(), Gi = new Q(), qa = new Q(), qp = new Q(), qt = new Q(), v1 = new V(), v2 = new V();
+    {   // 후디 밑단이 다리 뼈에 끌려 늘어나는 것 방지: 허리~골반 높이의 정점은 다리 영향을 줄이고 골반으로 옮김
+      const names = Object.keys(T), idx = {}; let sk0 = null; rg.traverse(o => { if (o.isSkinnedMesh && !sk0) sk0 = o; });
+      if (sk0) {
+        const bi = n => sk0.skeleton.bones.indexOf(T[n]), pel = bi('CC_Base_Pelvis'), legs = new Set(names.filter(n => /Thigh|Calf/.test(n)).map(bi));
+        const g = sk0.geometry, P = g.attributes.position, SI = g.attributes.skinIndex, SW = g.attributes.skinWeight, v = new V();
+        for (let k = 0; k < P.count; k++) {
+          v.fromBufferAttribute(P, k).applyMatrix4(sk0.matrixWorld); root.worldToLocal(v); const y = v.y / F;
+          const f = Math.max(0, Math.min(1, (0.9 - y) / 0.08)); if (f >= 1) continue;
+          let move = 0, ps = -1, small = 0;
+          for (let j = 0; j < 4; j++) { const ji = SI.array[k * 4 + j], w = SW.array[k * 4 + j]; if (ji === pel) ps = j; if (w < SW.array[k * 4 + small]) small = j; if (legs.has(ji) && w > 0) { move += w * (1 - f); SW.array[k * 4 + j] = w * f; } }
+          if (move > 0) { if (ps < 0) { ps = small; SI.array[k * 4 + ps] = pel; SW.array[k * 4 + ps] = 0; } SW.array[k * 4 + ps] += move; }
+        }
+        SI.needsUpdate = SW.needsUpdate = true;
+      }
+    }
+    const IDQ = new Q(), rq = new Q(), Gi = new Q(), qa = new Q(), qp = new Q(), qt = new Q(), v1 = new V(), v2 = new V();
     const wq = b => { const q = new Q(); b.getWorldQuaternion(q); return q; };
     const TIP = { Hips: 'Abdomen', Abdomen: 'Torso', Torso: 'Neck', Neck: 'Head', ShoulderL: 'UpperArmL', UpperArmL: 'LowerArmL', LowerArmL: 'FistL', ShoulderR: 'UpperArmR', UpperArmR: 'LowerArmR', LowerArmR: 'FistR', UpperLegL: 'LowerLegL', UpperLegR: 'LowerLegR' };
     const MAP = { Hips: 'CC_Base_Pelvis', Abdomen: 'CC_Base_Waist', Torso: 'CC_Base_Spine02', Neck: 'CC_Base_NeckTwist01', Head: 'CC_Base_Head',
       ShoulderL: 'CC_Base_L_Clavicle', UpperArmL: 'CC_Base_L_Upperarm', LowerArmL: 'CC_Base_L_Forearm', FistL: 'CC_Base_L_Hand',
       ShoulderR: 'CC_Base_R_Clavicle', UpperArmR: 'CC_Base_R_Upperarm', LowerArmR: 'CC_Base_R_Forearm', FistR: 'CC_Base_R_Hand',
       UpperLegL: 'CC_Base_L_Thigh', LowerLegL: 'CC_Base_L_Calf', UpperLegR: 'CC_Base_R_Thigh', LowerLegR: 'CC_Base_R_Calf' };
+    const DAMP = { Hips: 0.7, Abdomen: 0.5, Torso: 0.5, Neck: 0.5, Head: 0.5, UpperLegL: 0.85, UpperLegR: 0.85 };   // 원본의 숙이는 동작·큰 걸음을 사람 비율에 맞게 줄임
     const wp = b => { const v = new V(); b.getWorldPosition(v); return v; };
     const PAIRS = Object.keys(MAP).filter(k => src[k] && T[MAP[k]]).map(k => {
       const s0 = src[k], t0 = T[MAP[k]], tk = TIP[k];
       let al = new Q();                                                              // 휴식 자세가 달라도(T자 ↔ 팔 내림) 뼈 방향을 맞춰서 전달
       if (tk && src[tk] && T[MAP[tk]]) { const ds = wp(src[tk]).sub(wp(s0)).normalize(), dt = wp(T[MAP[tk]]).sub(wp(t0)).normalize(); al.setFromUnitVectors(dt, ds); }
-      return { s: s0, t: t0, sInv: wq(s0).invert(), tRest: al.multiply(wq(t0)) };
+      return { s: s0, t: t0, sInv: wq(s0).invert(), tRest: al.multiply(wq(t0)), damp: DAMP[k] === undefined ? 1 : DAMP[k] };
     });
     const feet = ['CC_Base_L_Foot', 'CC_Base_R_Foot'].map(n => ({ t: T[n], tRest: wq(T[n]) }));
     const pos = b => { const v = new V(); b.getWorldPosition(v); return root.worldToLocal(v); };
@@ -143,7 +159,7 @@ window.CHARS = (function () {
         setHip(); T.CC_Base_Hip.updateMatrixWorld(true);
         for (const p of PAIRS) {
           p.s.getWorldQuaternion(qa); qa.premultiply(Gi);
-          qt.copy(qa).multiply(p.sInv).multiply(p.tRest);                            // 원본이 휴식 자세에서 돌아간 만큼 그대로 전달
+          qt.copy(qa).multiply(p.sInv); if (p.damp < 1) qt.slerp(IDQ, 1 - p.damp); qt.multiply(p.tRest);                            // 원본이 휴식 자세에서 돌아간 만큼 그대로 전달
           p.t.parent.getWorldQuaternion(qp); qp.premultiply(Gi);
           p.t.quaternion.copy(qp.invert().multiply(qt)); p.t.updateMatrixWorld(true);
         }
