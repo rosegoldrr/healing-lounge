@@ -4,6 +4,7 @@ window.CHARS = (function () {
   const RIDER = 99;                 // 운영자 전용 라이더 복장 (후드 남 모델을 기반으로 색과 장비를 바꿔요)
   const SCALE = 0.64;               // 모델 키 약 3.1 → 2.0
   const cache = {}, waits = {}, matCache = {};
+  let riderSrc = null, riderTried = false;
   let clips = null, clipWait = null;
   const loader = new THREE.GLTFLoader();
 
@@ -21,12 +22,13 @@ window.CHARS = (function () {
     if (cache[i]) { if (cb) cb(); return; }
     if (waits[i]) { if (cb) waits[i].push(cb); return; }
     waits[i] = cb ? [cb] : [];
-    let n = 2;
+    let n = i === RIDER ? 3 : 2;
     const done = () => { if (--n) return; const w = waits[i]; delete waits[i]; w.forEach(f => f()); };
     loadAnim(done);
     loader.load('/models/chars/' + (i === RIDER ? 3 : i) + '.glb', g => { cache[i] = g; done(); }, undefined, () => { delete waits[i]; });
+    if (i === RIDER) loader.load('/models/chars/rider.glb?v=1', g => { riderSrc = g; riderTried = true; done(); }, undefined, () => { riderSrc = null; riderTried = true; done(); });   // 운영자 전용 3D 모델(없으면 기본 라이더 복장)
   }
-  const ready = i => !!(cache[i] && clips);
+  const ready = i => !!(cache[i] && clips && (i !== RIDER || riderTried));
 
   function cloneSkinned(src) {
     const clone = src.clone(true);
@@ -96,17 +98,98 @@ window.CHARS = (function () {
       bp.position.set(0, 0.13, -0.42); bp.rotation.y = Math.PI; torso.add(bp);
     }
   }
+  /* ═════ 운영자 전용 3D 모델: 실제 비율 그대로, 기존 뼈대(걷기·앉기 등)에 자동으로 붙여요 ═════ */
+  function applyCustomRider(root, toon) {
+    const V = THREE.Vector3;
+    let skel = null; const olds = [];
+    root.traverse(o => { if (o.isSkinnedMesh) { olds.push(o); skel = skel || o.skeleton; } });
+    if (!skel) return false;
+    let sg = null, tex = null;
+    riderSrc.scene.traverse(o => { if (o.isMesh && !sg) { sg = o.geometry; tex = o.material.map; } });
+    if (!sg || !tex) return false;
+    const B = {}; skel.bones.forEach(b => { B[b.name] = b; });
+    // 1) 기본 자세(Idle) 첫 장면으로 세워 두고
+    const m0 = new THREE.AnimationMixer(root); m0.clipAction(clips.Idle).play(); m0.update(0);
+    root.updateMatrixWorld(true); m0.stopAllAction(); m0.uncacheRoot(root);
+    const hip0 = new V(); B.Hips.getWorldPosition(hip0); root.worldToLocal(hip0);
+    const sgnL = (() => { const a = new V(), b = new V(); B.UpperArmL.getWorldPosition(a); B.UpperArmR.getWorldPosition(b); return a.x >= b.x ? 1 : -1; })();
+    // 2) 샘플(정규화 좌표: 키 1.0, 발바닥 -0.5) → 뼈대 공간. 비율은 그대로(실제 사람 비율), 키만 게임 캐릭터에 맞춤
+    const S = 3.13 * (window.__rs || 1), cx = (-0.185 + 0.179) / 2, cz = (-0.117 + 0.105) / 2;
+    const W = (sx, sy, sz) => new V(hip0.x + sx * S, (sy + 0.5) * S, hip0.z + (sz || 0) * S);
+    const J = {
+      Hips: W(0, -0.08, 0), Abdomen: W(0, 0.0, 0), Torso: W(0, 0.13, 0), Neck: W(0, 0.29, 0), Head: W(0, 0.325, 0.005),
+      ShoulderL: W(sgnL * 0.05, 0.27, 0), UpperArmL: W(sgnL * 0.13, 0.25, 0), LowerArmL: W(sgnL * 0.145, 0.07, 0.0), FistL: W(sgnL * 0.14, -0.1, 0.01),
+      ShoulderR: W(-sgnL * 0.05, 0.27, 0), UpperArmR: W(-sgnL * 0.13, 0.25, 0), LowerArmR: W(-sgnL * 0.145, 0.07, 0.0), FistR: W(-sgnL * 0.14, -0.1, 0.01),
+      UpperLegL: W(sgnL * 0.06, -0.08, 0), LowerLegL: W(sgnL * 0.06, -0.28, 0.01), UpperLegR: W(-sgnL * 0.06, -0.08, 0), LowerLegR: W(-sgnL * 0.06, -0.28, 0.01)
+    };
+    // 3) 뼈 위치를 새 비율로 옮기고(위→아래 순서), 달라진 만큼을 애니메이션에도 반영
+    const ORDER = ['Hips', 'Abdomen', 'Torso', 'Neck', 'Head', 'ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR', 'UpperLegL', 'LowerLegL', 'UpperLegR', 'LowerLegR'];
+    const diff = {};
+    ORDER.forEach(n => {
+      const b = B[n]; if (!b) return; const old = b.position.clone();
+      b.parent.updateWorldMatrix(true, false);
+      b.position.copy(b.parent.worldToLocal(root.localToWorld(J[n].clone()))); b.updateMatrixWorld(true);
+      diff[n] = b.position.clone().sub(old);
+    });
+    const RC = {};
+    ['Idle', 'Walk', 'Run', 'Jump', 'Walk_Carry', 'Run_Carry', 'SitDown', 'StandUp', 'PickUp', 'Punch', 'RecieveHit', 'Roll', 'SwordSlash', 'Shoot_OneHanded', 'Defeat', 'Death'].forEach(k => {
+      if (!clips[k]) return; const c = clips[k].clone(); const du = c.duration || 1;
+      c.tracks.forEach(t => {
+        const m = /^(.+)\.position$/.exec(t.name); if (!m || !diff[m[1]]) return;
+        const d = diff[m[1]], v = t.values, times = t.times;
+        for (let f = 0; f < times.length; f++) {
+          let r = 1; if (m[1] === 'Hips') { const fr = Math.min(1, times[f] / du); if (k === 'SitDown') r = 1 - fr; else if (k === 'StandUp') r = fr; else if (k === 'Death' || k === 'Defeat') r = 0; }   // 앉을 땐 골반이 의자 높이에 닿게
+          v[f * 3] += d.x * r; v[f * 3 + 1] += d.y * r; v[f * 3 + 2] += d.z * r;
+        }
+      });
+      RC[k] = c;
+    });
+    root.userData.rclips = RC;
+    // 4) 새 자세에서의 뼈 위치 → 정점 뼈 무게
+    const P = n => { const v = new V(); B[n].getWorldPosition(v); return root.worldToLocal(v); };
+    const g = sg.clone(), pos = g.attributes.position, n = pos.count;
+    for (let v = 0; v < n; v++) pos.setXYZ(v, hip0.x + (pos.getX(v) - cx) * S, (pos.getY(v) + 0.5) * S, hip0.z + (pos.getZ(v) - cz) * S);
+    const seg = [], add = (nm, a, b, pen) => { const i = skel.bones.indexOf(B[nm]); if (i >= 0) seg.push({ i, a, b, pen: pen || 1 }); };
+    const R = (sx, sy, sz) => W(sx, sy, sz || 0);
+    add('Hips', R(-0.07, -0.06), R(0.07, -0.06)); add('Hips', P('Hips'), P('Abdomen'));
+    add('Abdomen', R(-0.09, 0.02), R(0.09, 0.02)); add('Abdomen', P('Abdomen'), P('Torso'));
+    add('Torso', R(-0.1, 0.2), R(0.1, 0.2)); add('Torso', P('Torso'), P('Neck'));
+    add('Neck', P('Neck'), P('Head')); add('Head', P('Head'), W(0, 0.5, 0.0)); add('Head', P('Head'), W(0, 0.4, 0.0));
+    ['L', 'R'].forEach(sd => {
+      const sg2 = sd === 'L' ? sgnL : -sgnL;
+      add('UpperArm' + sd, P('UpperArm' + sd), P('LowerArm' + sd), 1.25); add('LowerArm' + sd, P('LowerArm' + sd), P('Fist' + sd), 1.15);
+      add('Fist' + sd, P('Fist' + sd), W(sg2 * 0.14, -0.14, 0.01), 1.1);
+      add('UpperLeg' + sd, P('UpperLeg' + sd), P('LowerLeg' + sd)); add('LowerLeg' + sd, P('LowerLeg' + sd), W(sg2 * 0.06, -0.43, 0.0));
+      add('LowerLeg' + sd, W(sg2 * 0.06, -0.43, 0.0), W(sg2 * 0.06, -0.47, 0.07));
+    });
+    const sI = new Uint16Array(n * 4), sW = new Float32Array(n * 4), q = new V(), ab = new V(), ap = new V(), cp = new V();
+    for (let v = 0; v < n; v++) {
+      q.set(pos.getX(v), pos.getY(v), pos.getZ(v)); const best = {};
+      seg.forEach(s => { ab.copy(s.b).sub(s.a); const L2 = ab.lengthSq() || 1e-6; ap.copy(q).sub(s.a); const t = Math.min(1, Math.max(0, ap.dot(ab) / L2)); cp.copy(ab).multiplyScalar(t).add(s.a); const d = q.distanceTo(cp) * s.pen; if (best[s.i] === undefined || d < best[s.i]) best[s.i] = d; });
+      const ds = Object.keys(best).map(k => ({ i: +k, d: best[k] })).sort((x, y) => x.d - y.d).slice(0, 3); let tot = 0; ds.forEach(o => { o.w = 1 / Math.pow(o.d + 0.03, 6); tot += o.w; });
+      for (let k = 0; k < 4; k++) { const o = ds[k]; sI[v * 4 + k] = o ? o.i : 0; sW[v * 4 + k] = o ? o.w / tot : 0; }
+    }
+    g.setAttribute('skinIndex', new THREE.BufferAttribute(sI, 4)); g.setAttribute('skinWeight', new THREE.BufferAttribute(sW, 4));
+    g.computeVertexNormals(); g.computeBoundingBox(); g.computeBoundingSphere();
+    tex.anisotropy = 4;
+    const mesh = new THREE.SkinnedMesh(g, toon(new THREE.Color('#ffffff'), { skinning: true, map: tex }));
+    mesh.frustumCulled = false; mesh.castShadow = true; root.add(mesh); root.updateMatrixWorld(true);
+    mesh.bind(new THREE.Skeleton(skel.bones, skel.bones.map(b => b.matrixWorld.clone().invert())), mesh.matrixWorld);
+    olds.forEach(o => { if (o.parent) o.parent.remove(o); });
+    return true;
+  }
   function make(i, toon) {
     const g = cache[i];
     const root = cloneSkinned(g.scene);
-    if (i === RIDER) dressRider(root, toon);
+    if (i === RIDER) { if (!(riderSrc && !window.__noRiderMesh && applyCustomRider(root, toon))) dressRider(root, toon); }
     else root.traverse(o => {
       if (o.isSkinnedMesh) { o.frustumCulled = false; o.castShadow = true; o.material = mat(toon, o.material, i); }
     });
     const holder = new THREE.Group(); holder.add(root); holder.scale.setScalar(SCALE);
     const mixer = new THREE.AnimationMixer(root), act = {};
     const ONCE = { SitDown: 1, StandUp: 0, PickUp: 0, Punch: 0, RecieveHit: 0, Roll: 0, SwordSlash: 0, Shoot_OneHanded: 0, Defeat: 1, Death: 1 };   // 한 번만 재생 (1 = 끝 자세 유지)
-    ['Idle', 'Walk', 'Run', 'Jump', 'Walk_Carry', 'Run_Carry'].concat(Object.keys(ONCE)).forEach(k => { if (clips[k]) { const a = mixer.clipAction(clips[k]); act[k] = a; if (k in ONCE) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = !!ONCE[k]; } } });
+    const CL = root.userData.rclips || clips;
+    ['Idle', 'Walk', 'Run', 'Jump', 'Walk_Carry', 'Run_Carry'].concat(Object.keys(ONCE)).forEach(k => { if (CL[k]) { const a = mixer.clipAction(CL[k]); act[k] = a; if (k in ONCE) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = !!ONCE[k]; } } });
     act.Idle.play();
     holder.updateMatrixWorld(true);
     const top = new THREE.Box3().setFromObject(holder).max.y;
@@ -118,6 +201,8 @@ window.CHARS = (function () {
       a.reset().setEffectiveWeight(1).play(); if (b) a.crossFadeFrom(b, 0.22, false);
       P.cur = name;
     }
+    { const A = P.act[P.cur];                       // 접시·컵을 들고 서 있을 때: 걷기(들기) 자세에서 멈춰 둠 → 손에 제대로 들려 있어요
+      if (A && P.cur === 'Walk_Carry') { if (P.hold) { if (!A.paused) { A.paused = true; A.time = A.getClip().duration * 0.25; } } else if (A.paused) A.paused = false; } }
     P.mixer.update(dt);
     const ARM = ['UpperArmL', 'UpperArmR', 'LowerArmL', 'LowerArmR'];
     if (P.hand || P.hbase) {                        // 운전대/핸들 잡는 팔 자세 (애니메이션 뒤에 덮어씀 — 누적되지 않게 기준 자세를 기억)

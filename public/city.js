@@ -59,7 +59,7 @@ function buildCity(THREE, scene, renderer, OPT) {
   const P = (deg, r) => [Math.cos(deg * D2R) * r, Math.sin(deg * D2R) * r];
   function angDiff(a, b) { return Math.abs(((a - b + 540) % 360) - 180); }
   const avDist = deg => Math.min.apply(null, AV.map(a => angDiff(deg, a)));
-  function addCircle(x, z, r) { city.colliders.push({ x, z, r }); }
+  function addCircle(x, z, r, h) { city.colliders.push(h ? { x, z, r, h } : { x, z, r }); }
   function addBoxCol(x, z, hw, hd, ry, h) { const b = { x, z, hw, hd, ry, h, c: Math.cos(ry), s: Math.sin(ry) }; city.boxes.push(b); }
 
   /* 인스턴스 묶음 */
@@ -686,7 +686,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     const seat1 = (lx, lz, dir, colr) => {                   // 의자 한 자리 (dir: 바라보는 방향 각도)
       const p = f.w(lx, lz); chairS.add(p[0], 0.46, p[1], dir, 0.46, 0.06, 0.46, colr);
       const bk = frame(p[0], p[1], dir).w(0, -0.22); chairB.add(bk[0], 0.76, bk[1], dir, 0.46, 0.5, 0.05, colr);
-      city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +dir.toFixed(3), n: 1 });
+      city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +dir.toFixed(3), n: 1, y: 0.49 });
     };
     const tbl = (lx, lz, four) => {
       const p = f.w(lx, lz); tableTop.add(p[0], 0.8, p[1], 0, 0.62, 0.06, 0.62); city.tables.push({ x: p[0], z: p[1], y: 0.83 }); tableLeg.add(p[0], 0.4, p[1], 0, 0.05, 0.8, 0.05); addCircle(p[0], p[1], 0.9);
@@ -696,9 +696,9 @@ function buildCity(THREE, scene, renderer, OPT) {
     [[-11.6, -4.2], [-6.4, -4.2], [6.4, -4.2], [11.6, -4.2]].forEach(t => tbl(t[0], t[1], false)); tbl(0, -4.8, true);
     // 창가 바 (창 앞 긴 선반 + 스툴)
     [-1, 1].forEach(sd => { const lx = sd * 9.25; wbox(lx - 4.4, lx + 4.4, 0.95, 1.05, -1.5, -0.8, M('#6e4a33')); [-1, 1].forEach(s2 => wbox(lx + s2 * 4.2 - 0.04, lx + s2 * 4.2 + 0.04, 0, 0.95, -1.3, -1.0, M('#4a4352')));
-      [-2.9, 0, 2.9].forEach(o => { const p = f.w(lx + o, -2.2); stool.add(p[0], 0.5, p[1], 0, 0.22, 0.05, 0.22, '#c4694a'); stool.add(p[0], 0.26, p[1], 0, 0.04, 0.52, 0.04, '#4a4352'); city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +ry.toFixed(3), n: 1 }); }); });
+      [-2.9, 0, 2.9].forEach(o => { const p = f.w(lx + o, -2.2); stool.add(p[0], 0.5, p[1], 0, 0.22, 0.05, 0.22, '#c4694a'); stool.add(p[0], 0.26, p[1], 0, 0.04, 0.52, 0.04, '#4a4352'); city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +ry.toFixed(3), n: 1, y: 0.525 }); }); });
     // 카운터 스툴
-    [-6, -3, 0, 3, 6].forEach(lx => { const p = f.w(lx, -8.7); stool.add(p[0], 0.62, p[1], 0, 0.24, 0.06, 0.24, '#5f8d7c'); stool.add(p[0], 0.3, p[1], 0, 0.045, 0.6, 0.045, '#4a4352'); city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +(ry + Math.PI).toFixed(3), n: 1 }); });
+    [-6, -3, 0, 3, 6].forEach(lx => { const p = f.w(lx, -8.7); stool.add(p[0], 0.62, p[1], 0, 0.24, 0.06, 0.24, '#5f8d7c'); stool.add(p[0], 0.3, p[1], 0, 0.045, 0.6, 0.045, '#4a4352'); city.benches.push({ x: +p[0].toFixed(2), z: +p[1].toFixed(2), ry: +(ry + Math.PI).toFixed(3), n: 1, y: 0.65 }); });
     // 벽 소파 (2인용)
     [-1, 1].forEach(sd => [-5.6, -8.0].forEach(lz => { const lx = sd * 14.7, dir = ry + (sd > 0 ? -Math.PI / 2 : Math.PI / 2), p = f.w(lx, lz), fr = frame(p[0], p[1], dir);
       chairS.add(p[0], 0.5, p[1], dir, 1.0, 0.34, 2.3, '#8b5a4c'); const bk = fr.w(0, -0.46); sofaB.add(bk[0], 0.95, bk[1], dir, 0.28, 0.9, 2.3, '#8b5a4c');
@@ -715,7 +715,7 @@ function buildCity(THREE, scene, renderer, OPT) {
       const p = f.w(t[0], t[1]); oTop.add(p[0], 0.8, p[1], 0, 0.58, 0.06, 0.58); city.tables.push({ x: p[0], z: p[1], y: 0.83 }); oLeg.add(p[0], 0.4, p[1], 0, 0.05, 0.8, 0.05); addCircle(p[0], p[1], 0.95);
       [-1, 1].forEach((sd, ci) => { const cp = f.w(t[0] + sd * 0.95, t[1]), cr = ry + (sd > 0 ? -Math.PI / 2 : Math.PI / 2), c2 = ci ? '#c4694a' : '#5f8d7c';
         oChS.add(cp[0], 0.46, cp[1], cr, 0.46, 0.06, 0.46, c2); const bk = frame(cp[0], cp[1], cr).w(0, -0.22); oChB.add(bk[0], 0.76, bk[1], cr, 0.46, 0.5, 0.05, c2);
-        city.benches.push({ x: +cp[0].toFixed(2), z: +cp[1].toFixed(2), ry: +cr.toFixed(3), n: 1 }); });
+        city.benches.push({ x: +cp[0].toFixed(2), z: +cp[1].toFixed(2), ry: +cr.toFixed(3), n: 1, y: 0.49 }); });
       umbP.add(p[0], 1.15, p[1], 0, 0.04, 2.3, 0.04); umbC.add(p[0], 2.5, p[1], 0, 1.7, 0.7, 1.7, ['#e8a089', '#f2e2c6', '#86b8ae', '#e8a089'][ti % 4]);
       shadow(p[0] + 0.6, p[1] + 0.5, 3.2, 3.0, 0, 0.5);
     });
@@ -979,10 +979,21 @@ function buildCity(THREE, scene, renderer, OPT) {
       lanterns.forEach((p, i) => { tmp.position.set(p[0], 0.62, p[1]); tmp.rotation.set(0, 0, 0); tmp.scale.set(1, 1, 1); tmp.updateMatrix(); bm.setMatrixAt(i, tmp.matrix); tmp.position.set(p[0], 0.28, p[1]); tmp.updateMatrix(); pst.setMatrixAt(i, tmp.matrix); }); scene.add(bm); scene.add(pst); } }
 
   /* ═════════ 충돌 · 카메라 · 갱신 ═════════ */
+  /* 걸어 다니는 바닥 높이: 발이 지붕 높이 근처 이상이면 그 지붕 위가 바닥이에요 (아래층·땅에서는 0) */
+  city.floorAt = function (x, z, y) {
+    let best = 0;
+    for (const b of city.roofs) {
+      if (b.h <= best || b.h > y + 0.45) continue; const dx = x - b.x, dz = z - b.z, c = Math.cos(b.ry), s = Math.sin(b.ry), lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) <= b.hw && Math.abs(lz) <= b.hd) best = b.h;
+    }
+    return best;
+  };
   city.resolve = function (p, rad) {
+    const py = p.y > 0.3 ? p.y : -1;
     for (let it = 0; it < 2; it++) {
-      for (const c of city.colliders) { const dx = p.x - c.x, dz = p.z - c.z, m = c.r + rad, d2 = dx * dx + dz * dz; if (d2 < m * m) { const d = Math.sqrt(d2) || 0.001; p.x = c.x + dx / d * m; p.z = c.z + dz / d * m; } }
+      for (const c of city.colliders) { if (py > 0 && c.h && c.h <= py + 0.3) continue; const dx = p.x - c.x, dz = p.z - c.z, m = c.r + rad, d2 = dx * dx + dz * dz; if (d2 < m * m) { const d = Math.sqrt(d2) || 0.001; p.x = c.x + dx / d * m; p.z = c.z + dz / d * m; } }
       for (const b of city.boxes) {
+        if (py > 0 && b.h <= py + 0.3) continue;                  // 지붕 위에 서 있으면 그 건물 벽은 무시
         const ox = p.x - b.x, oz = p.z - b.z, lx = ox * b.c - oz * b.s, lz = ox * b.s + oz * b.c, ex = b.hw + rad, ez = b.hd + rad;
         if (Math.abs(lx) < ex && Math.abs(lz) < ez) {
           const px = ex - Math.abs(lx), pz = ez - Math.abs(lz); let nx = lx, nz = lz;
@@ -1106,7 +1117,7 @@ function buildCity(THREE, scene, renderer, OPT) {
         const im = new THREE.InstancedMesh(geo, mat, mine.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(tw[1], tw[1], tw[1]), up = new THREE.Vector3(0, 1, 0);
         mine.forEach((s, i) => {
           const ry = faceCenter(s[0], s[1]) + R(-0.06, 0.06); q.setFromAxisAngle(up, ry); m4.compose(new THREE.Vector3(s[0], 0.02, s[1]), q, sc); im.setMatrixAt(i, m4);
-          addCircle(s[0], s[1], Math.max(hw, hd) * tw[1] * 0.8); city.roofs.push({ x: s[0], z: s[1], hw: hw * tw[1] * 0.9, hd: hd * tw[1] * 0.9, ry, h: bb.max.y * tw[1] * 0.92 }); shadow(s[0], s[1], hw * 2 * tw[1] * 1.15, hd * 2 * tw[1] * 1.15, ry, 0.5);
+          addCircle(s[0], s[1], Math.max(hw, hd) * tw[1] * 0.8, bb.max.y * tw[1] * 0.92); city.roofs.push({ x: s[0], z: s[1], hw: hw * tw[1] * 0.9, hd: hd * tw[1] * 0.9, ry, h: bb.max.y * tw[1] * 0.92 }); shadow(s[0], s[1], hw * 2 * tw[1] * 1.15, hd * 2 * tw[1] * 1.15, ry, 0.5);
         });
         im.frustumCulled = false; im.castShadow = false; im.receiveShadow = false; scene.add(im);
       }).catch(() => {});

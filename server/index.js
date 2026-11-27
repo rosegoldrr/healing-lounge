@@ -155,13 +155,14 @@ function spawnPoint(room) {
   return { x: 0, z: 0 };
 }
 
-function leaveCar(room, me) {
+function leaveCar(room, me, gy) {
+  gy = gy || 0;
   const c = room.cars[me.ride.car], seat = me.ride.seat, sd = Math.sin(c.ry), cd = Math.cos(c.ry);
-  const vi = CARS.vinfo(c.id), q = seat ? vi.p : vi.d, side = (q[0] ? Math.sign(q[0]) : 1) * (vi.k === 'dragon' ? 4.2 : 2.4);
-  me.x = c.x + cd * side; me.z = c.z - sd * side; { const q = CARS.clamp(me.x, me.z, CFG.worldRadius, 0, 12); me.x = q[0]; me.z = q[1]; }
-  me.y = 0; me.st = 0; me.ride = null; me.lastT = Date.now(); me.mv = 0;
+  const vi = CARS.vinfo(c.id), q = seat ? vi.p : vi.d, side = (q[0] ? Math.sign(q[0]) : 1) * (vi.k === 'dragon' ? (gy > 0 ? 2.2 : 4.2) : 2.4);
+  me.x = c.x + cd * side; me.z = c.z - sd * side; { const q = gy > 3 ? CARS.clamp(me.x, me.z, CFG.worldRadius, -25, 40) : CARS.clamp(me.x, me.z, CFG.worldRadius, 0, 12); me.x = q[0]; me.z = q[1]; }
+  me.y = gy; me.st = 0; me.ride = null; me.lastT = Date.now(); me.mv = 0;
   if (seat === 0) { c.driver = 0; c.sp = 0; if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } else c.eng = 0; } else c.pass = 0;
-  send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: 0 });
+  send(me.ws, { t: 'fix', x: round2(me.x), z: round2(me.z), y: gy });
 }
 function releasePlayer(room, me) {
   if (me.ride) { const c = room.cars[me.ride.car]; if (me.ride.seat === 0) { c.driver = 0; c.sp = 0; if (!c.pass) { c.eng = 0; c.fx = 0; } if (c.pass) { const q = room.players.get(c.pass); c.driver = c.pass; c.pass = 0; if (q && q.ride) { q.ride.seat = 0; send(q.ws, { t: 'ride', ok: true, car: c.id, seat: 0 }); } } } else c.pass = 0; me.ride = null; }
@@ -244,13 +245,13 @@ wss.on('connection', (ws, req) => {
       /* 클라이언트가 말한 위치를 그대로 믿지 않고, 시간당 이동 가능 거리 안으로만 인정 */
       const dt = clamp((now - me.lastT) / 1000, 0.01, 0.5); me.lastT = now; me.lastInput = now;
       if (me.ride) return;                                  // 자동차를 타고 있으면 위치는 서버가 정해요
-      me.y = clamp(num(m.y, 0), 0, 9); me.st = (m.st === 1 || m.st === 2 || m.st === 3) ? m.st : 0;
+      me.y = clamp(num(m.y, 0), 0, 250); me.st = (m.st === 1 || m.st === 2 || m.st === 3) ? m.st : 0;
       let tx = num(m.x, me.x), tz = num(m.z, me.z);
       let dx = tx - me.x, dz = tz - me.z;
       const dist = Math.hypot(dx, dz), maxD = CFG.maxSpeed * dt;
       if (dist > maxD) { dx *= maxD / dist; dz *= maxD / dist; }
       let nx = me.x + dx, nz = me.z + dz;
-      { const q = CARS.clamp(nx, nz, room.R, 0, 12); nx = q[0]; nz = q[1]; }
+      { const q = me.y > 3 ? CARS.clamp(nx, nz, room.R, -25, 40) : CARS.clamp(nx, nz, room.R, 0, 12); nx = q[0]; nz = q[1]; }   // 지붕 위(높은 곳)에서는 용이 날 수 있는 범위까지 허용
       me.mv = Math.hypot(nx - me.x, nz - me.z) / dt > 0.4 ? (Math.hypot(nx - me.x, nz - me.z) / dt > 6.5 ? 2 : 1) : 0;
       const stepLen = Math.hypot(nx - me.x, nz - me.z);
       if (me.acct) {
@@ -329,7 +330,7 @@ wss.on('connection', (ws, req) => {
       hid(me, 'drive', 1); me.ride = { car: i, seat }; me.st = 4; me.y = (c.y || 0) + CARS.seatY(i, seat); me.mv = 0;
       return send(ws, { t: 'ride', ok: true, car: i, seat });
     }
-    if (m.t === 'unride') { me.lastInput = now; if (me.ride) { const c = room.cars[me.ride.car]; if (CARS.vinfo(c.id).fly && (c.y || 0) > 1.6) return send(ws, { t: 'toast', m: '🐉 먼저 땅에 내려앉아 주세요 (C 키로 하강)' }); leaveCar(room, me); } return; }
+    if (m.t === 'unride') { me.lastInput = now; if (me.ride) { const c = room.cars[me.ride.car]; const gy = clamp(num(m.gy, 0), 0, 250); if (CARS.vinfo(c.id).fly && (c.y || 0) - gy > 1.6) return send(ws, { t: 'toast', m: '🐉 먼저 땅에 내려앉아 주세요 (C 키로 하강)' }); leaveCar(room, me, gy); } return; }
     if (m.t === 'drive') {                                  // 운전자가 보내는 자동차 상태
       me.lastInput = now;
       if (!me.ride || me.ride.seat !== 0) return;
