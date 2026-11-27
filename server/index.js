@@ -340,7 +340,7 @@ wss.on('connection', (ws, req) => {
       if (d > maxD) { nx = c.x + (nx - c.x) * maxD / d; nz = c.z + (nz - c.z) * maxD / d; send(ws, { t: 'cfix', x: round2(nx), z: round2(nz) }); }
       { const q = fl ? CARS.clamp(nx, nz, CFG.worldRadius, -25, 40) : CARS.clamp(nx, nz, CFG.worldRadius, 0.6, 7.6); nx = q[0]; nz = q[1]; }
       c.x = nx; c.z = nz; c.ry = num(m.ry, c.ry); c.sp = clamp(num(m.sp, 0), -12, fl ? 55 : 42);
-      if (fl) { c.gy = clamp(num(m.gy, 0), 0, 90); c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = 0; }
+      if (fl) { c.gy = clamp(num(m.gy, 0), 0, 90); c.y = clamp(num(m.y, c.y || 0), 0, 90); c.pt = clamp(num(m.pt, 0), -1.2, 1.2); } else { c.y = 0; c.pt = CARS.vinfo(c.id).k === 'bike' ? clamp(num(m.pt, 0), 0, 0.9) : 0; }
       return;
     }
     if (m.t === 'carset') {                                 // 색상 · 라이트

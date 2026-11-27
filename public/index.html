@@ -478,11 +478,15 @@ function animateAvatar(a,mv,dt,t,st,y){
   else{T.al=Math.sin(t*1.6)*0.04;T.ar=-Math.sin(t*1.6)*0.04;}
   if(U.pm)T.lab=U.pm.top+0.32-(st===ST.SIT||st===ST.RIDE?0.55:st===ST.LIE?1.3:0);
   const rv=st===ST.RIDE&&U.rv?U.rv:null,vi=rv?CARS.vinfo(rv.id):null,rsT=vi?vi.rs:1,drvSeat=!!(rv&&rv.seat===0);
-  if(rv){const stv=(me.g===a&&drvSeat)?drv.steer:0;if(U.pm&&vi.k!=='car')T.rigY=vi.k==='dragon'?(window.__dgy!==undefined?window.__dgy:0.55):-0.05;T.rigY*=rsT;T.lab=T.lab*rsT+0.2;
+  if(rv){const stv=(me.g===a&&drvSeat)?drv.steer:0;if(U.pm&&vi.k!=='car')T.rigY=vi.k==='dragon'?(window.__dgy!==undefined?window.__dgy:0.55):-0.05;if(U.pm&&U.pm.rt&&vi.k==='bike')T.rigY=-0.83;T.rigY*=rsT;T.lab=T.lab*rsT+0.2;
     if(drvSeat){T.al=-1.32-stv*0.3;T.ar=-1.32+stv*0.3;T.az=0.2;if(vi.k==='bike'){T.rotX=0.42;T.al=T.ar=-1.0;T.tl=-1.25;T.tr=-1.25;T.kl=T.kr=1.25;}}
     else if(vi.k==='bike'){T.rotX=0.36;T.al=T.ar=-0.95;T.tl=-1.3;T.tr=-1.3;T.kl=T.kr=1.2;T.az=0.16;}
     if(vi.k==='dragon'){T.al=T.ar=-1.0;T.az=0.12;T.rotX=0.12;}
-    U.stv=stv;}
+    U.stv=stv;
+    {const bc=vi.k==='bike'?carsC[rv.id]:null,wl=bc?(bc.pt||0):0;
+      if(wl>0.01){const q=rv.seat===0?vi.d:vi.p,sx=q[0],sy=q[2],sz=q[1],pv=[0,0.34,-0.85],cs=Math.cos(-wl),sn=Math.sin(-wl),ry=a.rotation.y,vy=sy-pv[1],vz=sz-pv[2];
+        const dy=(vy*cs-vz*sn)-vy,dz=(vy*sn+vz*cs)-vz;a.rotation.order='YXZ';a.rotation.x=-wl;a.position.x+=dz*Math.sin(ry);a.position.y+=dy;a.position.z+=dz*Math.cos(ry);}
+      else if(a.rotation.x){a.rotation.x=0;}}}
   U.rs=(U.rs||1)+(rsT-(U.rs||1))*(1-Math.exp(-14*dt));U.rig.scale.setScalar(U.rs);
   if(U.pm){const hv=window.__hand||null;U.pm.hand=rv&&!drvSeat&&vi.k==='bike'?(hv||{ax:'z',ul:-0.8,ur:0.8,ll:-0.45,lr:0.45}):rv&&drvSeat&&vi.k!=='dragon'?(hv||(vi.k==='bike'?{ax:'z',ul:-0.95,ur:0.95,ll:-0.1,lr:0.1}:{ax:'z',ul:-0.8,ur:0.8,ll:-0.2,lr:0.2})):null;}
   rideWheel(a,U,rv&&drvSeat?vi:null,U.stv||0);
@@ -1004,7 +1008,7 @@ function updatePrompt(){
   if(joined){
     if(me.st===ST.SIT&&me.bench)t='[E] 일어나기';
     else if(me.st===ST.SIT&&me.tree)t='[E] 내려가기 · [Space] 뛰어내리기';
-    else if(me.st===ST.RIDE)t=me.seat===0?(CARS.vinfo(me.car).fly?'WASD 비행 · Space 상승 · 시선 아래+전진=하강 · F 불(누르는 동안) · H 울부짖기 · Shift 가속 · E 내리기':'X 시동 · WASD 운전 · Space 핸드브레이크 · Shift 부스트 · E 내리기'):'[E] 내리기';
+    else if(me.st===ST.RIDE)t=me.seat===0?(CARS.vinfo(me.car).fly?'WASD 비행 · Space 상승 · 시선 아래+전진=하강 · F 불(누르는 동안) · H 울부짖기 · Shift 가속 · E 내리기':(CARS.vinfo(me.car).k==='bike'?'X 시동 · WASD 운전 · T 윌리(달리는 중 누르고 있기) · Space 핸드브레이크 · Shift 부스트 · E 내리기':'X 시동 · WASD 운전 · Space 핸드브레이크 · Shift 부스트 · E 내리기')):'[E] 내리기';
     else if(me.st===ST.SIT||me.st===ST.LIE)t='';
     else{const f=findTarget();if(f){t='[E] '+f.label;hot=true;
       const a=f.type==='ani'?f.a:nearAni(3.0);if(a)t+=(a.kind==='dog'?' · [F] '+(a.owner===myId?'산책 끝내기':'산책 시작'):'')+' · [G] 간식';}
@@ -1193,7 +1197,7 @@ function renderCars(dt){
 }
 function initDrive(id){const c=carsC[id];drv.y=c.y||0;drv.vy=0;drv.pt=0;drv.thr=0;drv.x=c.rx;drv.z=c.rz;drv.ry=c.rry;drv.vx=Math.sin(c.rry)*c.tsp;drv.vz=Math.cos(c.rry)*c.tsp;drv.sp=c.tsp;drv.steer=0;drv.t=0;
   me.x=drv.x;me.z=drv.z;dist=Math.max(dist,CARS.vinfo(id).fly?15:8);}
-let touchHB=false,touchDn=false;
+let touchHB=false,touchDn=false,touchWh=false;
 function fireOff(){send({t:'fire',on:0});const c=carsC[me.car];if(c)c.fireUntil=0;}
 function D_hold(c){c.rx=drv.x;c.rz=drv.z;c.rry=drv.ry;}
 const roofGy=c=>(zone==='plaza'&&city.roofAt)?city.roofAt(c.rx,c.rz,0.3):0;   // 차·용 아래 바닥(지붕) 높이
@@ -1264,7 +1268,8 @@ function stepDrive(dt,c){
   const lat=Math.abs(lx*nz-lz*nx);
   D.pf-=dt;if(D.pf<=0&&(lat>3.2||(hb&&Math.abs(D.sp)>6))){D.pf=0.07;const rx=D.x-nx*1.3,rz=D.z-nz*1.3;city.puff(rx+nz*0.9,0,rz-nx*0.9);city.puff(rx-nz*0.9,0,rz+nx*0.9);}
   c.rx=D.x;c.rz=D.z;c.rry=D.ry;c.rsp=D.sp;c.tsp=D.sp;
-  D.t+=dt;if(D.t>0.066){D.t=0;send({t:'drive',x:+D.x.toFixed(2),z:+D.z.toFixed(2),ry:+D.ry.toFixed(3),sp:+D.sp.toFixed(2)});}
+  {const wt=(vv.k==='bike'&&(keys.KeyT||touchWh)&&D.sp>2.2&&c.eng)?0.62:0;D.wl=(D.wl||0)+(wt-(D.wl||0))*(1-Math.exp(-(wt>(D.wl||0)?3.2:4.5)*dt));if(D.wl<0.005&&!wt)D.wl=0;c.pt=c.tpt=D.wl;if(D.wl>0.2&&D.sp<14)D.sp=D.vx*nx+D.vz*nz;}
+  D.t+=dt;if(D.t>0.066){D.t=0;send({t:'drive',x:+D.x.toFixed(2),z:+D.z.toFixed(2),ry:+D.ry.toFixed(3),sp:+D.sp.toFixed(2),pt:+(D.wl||0).toFixed(2)});}
 }
 function isCop(id){return id===6;}
 function toggleCopFx(bit){const c=carsC[me.car];if(!c||!isCop(me.car))return;const on=!((c.fx|0)&bit);c.fx=on?((c.fx|0)|bit):((c.fx|0)&~bit);c.bar=c.fx&1;c.siren=(c.fx>>1)&1;send({t:'carset',[bit===1?'b':'s']:on?1:0});}

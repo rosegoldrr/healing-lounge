@@ -136,15 +136,16 @@ window.CHARS = (function () {
       ShoulderL: 'CC_Base_L_Clavicle', UpperArmL: 'CC_Base_L_Upperarm', LowerArmL: 'CC_Base_L_Forearm', FistL: 'CC_Base_L_Hand',
       ShoulderR: 'CC_Base_R_Clavicle', UpperArmR: 'CC_Base_R_Upperarm', LowerArmR: 'CC_Base_R_Forearm', FistR: 'CC_Base_R_Hand',
       UpperLegL: 'CC_Base_L_Thigh', LowerLegL: 'CC_Base_L_Calf', UpperLegR: 'CC_Base_R_Thigh', LowerLegR: 'CC_Base_R_Calf' };
+    const ADD = {}; ['UpperArm', 'LowerArm', 'Fist'].forEach(n => { ADD[n + 'L'] = new Q().setFromAxisAngle(new V(0, 0, 1), -0.32); ADD[n + 'R'] = new Q().setFromAxisAngle(new V(0, 0, 1), 0.32); });   // 어깨가 넓어서 팔이 벌어져 보이는 것을 몸 쪽으로 모음
     const DAMP = { Hips: 0.7, Abdomen: 0.5, Torso: 0.5, Neck: 0.5, Head: 0.5, UpperLegL: 0.85, UpperLegR: 0.85 };   // 원본의 숙이는 동작·큰 걸음을 사람 비율에 맞게 줄임
     const wp = b => { const v = new V(); b.getWorldPosition(v); return v; };
     const PAIRS = Object.keys(MAP).filter(k => src[k] && T[MAP[k]]).map(k => {
       const s0 = src[k], t0 = T[MAP[k]], tk = TIP[k];
       let al = new Q();                                                              // 휴식 자세가 달라도(T자 ↔ 팔 내림) 뼈 방향을 맞춰서 전달
       if (tk && src[tk] && T[MAP[tk]]) { const ds = wp(src[tk]).sub(wp(s0)).normalize(), dt = wp(T[MAP[tk]]).sub(wp(t0)).normalize(); al.setFromUnitVectors(dt, ds); }
-      return { s: s0, t: t0, sInv: wq(s0).invert(), tRest: al.multiply(wq(t0)), damp: DAMP[k] === undefined ? 1 : DAMP[k] };
+      return { s: s0, t: t0, sInv: wq(s0).invert(), tRest: al.multiply(wq(t0)), damp: DAMP[k] === undefined ? 1 : DAMP[k], add: ADD[k] || null };
     });
-    const feet = ['CC_Base_L_Foot', 'CC_Base_R_Foot'].map(n => ({ t: T[n], tRest: wq(T[n]) }));
+    const feet = ['CC_Base_L_Foot', 'CC_Base_R_Foot'].map(n => { const t = T[n], tr = wq(t); return { t, tRest: tr, fOff: wq(t.parent).invert().multiply(tr) }; });
     const pos = b => { const v = new V(); b.getWorldPosition(v); return root.worldToLocal(v); };
     const hipS0 = pos(src.Hips), hipT0 = pos(T.CC_Base_Hip), ank0 = Math.min(pos(feet[0].t).y, pos(feet[1].t).y);
     const K = hipT0.y / (hipS0.y || 1), want = new V(), GROUND = { Idle: 1, Walk: 1, Run: 1, Walk_Carry: 1, Run_Carry: 1 };
@@ -160,11 +161,11 @@ window.CHARS = (function () {
         setHip(); T.CC_Base_Hip.updateMatrixWorld(true);
         for (const p of PAIRS) {
           p.s.getWorldQuaternion(qa); qa.premultiply(Gi);
-          qt.copy(qa).multiply(p.sInv); if (p.damp < 1) qt.slerp(IDQ, 1 - p.damp); qt.multiply(p.tRest);                            // 원본이 휴식 자세에서 돌아간 만큼 그대로 전달
+          qt.copy(qa).multiply(p.sInv); if (p.damp < 1) qt.slerp(IDQ, 1 - p.damp); qt.multiply(p.tRest); if (p.add) qt.premultiply(p.add);                            // 원본이 휴식 자세에서 돌아간 만큼 그대로 전달
           p.t.parent.getWorldQuaternion(qp); qp.premultiply(Gi);
           p.t.quaternion.copy(qp.invert().multiply(qt)); p.t.updateMatrixWorld(true);
         }
-        for (const f of feet) { f.t.parent.getWorldQuaternion(qp); qp.premultiply(Gi); f.t.quaternion.copy(qp.invert().multiply(f.tRest)); f.t.updateMatrixWorld(true); }   // 발은 항상 평평하게
+        for (const f of feet) { f.t.parent.getWorldQuaternion(qp); qp.premultiply(Gi); qa.copy(qp).multiply(f.fOff); qt.copy(f.tRest).slerp(qa, 0.3); f.t.quaternion.copy(qp.invert().multiply(qt)); f.t.updateMatrixWorld(true); }   // 발은 거의 평평하게, 종아리를 조금만 따라감
         let lift = 0;
         if (GROUND[P.cur]) { lift = ank0 - Math.min(pos(feet[0].t).y, pos(feet[1].t).y); lift = Math.max(-0.9, Math.min(0.9, lift)); }
         ls += (lift - ls) * 0.6;

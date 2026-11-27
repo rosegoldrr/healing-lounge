@@ -1193,6 +1193,7 @@ function buildCity(THREE, scene, renderer, OPT) {
     addCircle(sx, sz, 1.0); shadow(sx, sz, 3.2, 3.2, 0, 0.45);
     city.star = { x: sx, z: sz, mesh: starM };
   }
+  const BIKE_PIVOT = [0, 0.34, -0.85];   // 윌리할 때 뒷바퀴 축 위치(오토바이 기준 앞뒤·높이)
   city.update = function (dt, T, camPos, carT) {
     if (city.star) { city.star.mesh.rotation.y += dt * 0.9; city.star.mesh.position.y = 2.75 + Math.sin(T * 1.6) * 0.12; }
     windU.value = T; sky.position.copy(camPos); clouds.position.set(camPos.x, 0, camPos.z); clouds.rotation.y += dt * 0.0022; const cx = city.cx, cz = city.cz;
@@ -1222,7 +1223,8 @@ function buildCity(THREE, scene, renderer, OPT) {
       const c = carState[i]; if (!c) continue;
       const x = c.rx, z = c.rz, ry = c.rry;
       const cp = carParts[i];
-      if (cp) { tmp.position.set(x, c.y || 0, z); tmp.rotation.set(0, ry, 0, 'YXZ'); tmp.scale.set(1, 1, 1); tmp.updateMatrix(); cp.forEach(o => { o.m.setMatrixAt(0, tmp.matrix); o.m.instanceMatrix.needsUpdate = true; });
+      if (cp) { const wp = (c.pt || 0) > 0.01 && window.CARS && CARS.vinfo(i).k === 'bike' ? c.pt : 0; tmp.position.set(x, c.y || 0, z); tmp.rotation.set(-wp, ry, 0, 'YXZ'); tmp.scale.set(1, 1, 1);
+        if (wp) { const pv = BIKE_PIVOT, cs = Math.cos(wp), sn = Math.sin(wp), dy = pv[1] - (pv[1] * cs + pv[2] * sn), dz = pv[2] - (-pv[1] * sn + pv[2] * cs); tmp.position.x += dz * Math.sin(ry); tmp.position.y += dy; tmp.position.z += dz * Math.cos(ry); } tmp.updateMatrix(); cp.forEach(o => { o.m.setMatrixAt(0, tmp.matrix); o.m.instanceMatrix.needsUpdate = true; });
         if (lastCol[i] !== c.color) { lastCol[i] = c.color; tc.set(pal[c.color % pal.length]); cp.forEach(o => { if (o.body) { o.m.setColorAt(0, tc); o.m.instanceColor.needsUpdate = true; } }); } }
       const dr = doors[i]; if (dr) { const open = c.door || 0; dr.root.visible = open > 0.03; if (dr.root.visible) { dr.root.position.set(x, c.y || 0, z); dr.root.rotation.set(0, ry, 0, 'YXZ'); dr.piv.rotation.y = -dr.sd * open * 1.05; tc.set(pal[c.color % pal.length]); dr.mat.color.copy(tc); } }
       if (i === dragonId && dragon) { const fl = (c.y || 0) > 0.6; { const rk = (c.roarUntil || 0) - performance.now(), ro = rk > 0 ? Math.min(1, rk / 300, (1900 - rk) / 250 + 0.01) : 0; dragon.update(x, c.y || 0, z, ry, c.pt || 0, fl, c.fire, dt, true, Math.abs(c.rsp || 0), Math.max(0, ro)); } }
